@@ -35,7 +35,7 @@ def init_database():
     if not os.path.exists('database/programacoes.csv'):
         df_prog = pd.DataFrame(columns=[
             'id', 'cliente', 'cliente_outros', 'data', 'tipo_cbuq', 'toneladas', 
-            'quant_caminhoes', 'placas', 'local', 'status', 'data_solicitacao', 'observacoes'
+            'quant_caminhoes', 'placas', 'transportador', 'status', 'data_solicitacao', 'observacoes'
         ])
         df_prog.to_csv('database/programacoes.csv', index=False)
 
@@ -55,7 +55,7 @@ def salvar_programacoes(df):
     """Salva programações"""
     df.to_csv('database/programacoes.csv', index=False)
 
-def adicionar_programacao(cliente, cliente_outros, data, tipo_cbuq, toneladas, quant_caminhoes, placas, local, observacoes):
+def adicionar_programacao(cliente, cliente_outros, data, tipo_cbuq, toneladas, quant_caminhoes, placas, transportador, observacoes):
     """Adiciona nova programação"""
     df = carregar_programacoes()
     
@@ -76,7 +76,7 @@ def adicionar_programacao(cliente, cliente_outros, data, tipo_cbuq, toneladas, q
         'toneladas': toneladas,
         'quant_caminhoes': quant_caminhoes,
         'placas': placas,
-        'local': local,
+        'transportador': transportador,
         'status': 'Pendente',
         'data_solicitacao': datetime.now(),
         'observacoes': observacoes
@@ -152,7 +152,7 @@ def pagina_cliente(usuario):
             ]
             
             cliente_selecionado = st.selectbox(
-                "Cliente",
+                "Cliente (responsável pelo pagamento)",
                 opcoes_clientes
             )
             
@@ -160,9 +160,10 @@ def pagina_cliente(usuario):
             if cliente_selecionado == "Outros":
                 cliente_outros = st.text_input("Digite o nome do cliente")
             
+            # Novo tipo de CBUQ
             tipo_cbuq = st.selectbox(
-                "Tipo de CBUQ",
-                ["CBUQ 0/19", "CBUQ 0/25", "CBUQ 0/12,5", "CBUQ 0/9,5", "CBUQ 0/32"]
+                "Tipo CBUQ",
+                ["Faixa B", "Faixa C", "Faixa D", "Faixa D Aditivado", "EGL 16-19", "Gap-Graded", "PMQ"]
             )
             
             toneladas = st.number_input(
@@ -196,7 +197,11 @@ def pagina_cliente(usuario):
             # Juntar todas as placas em uma string separada por vírgula
             placas_str = ", ".join([p for p in placas if p])
             
-            local = st.text_input("Local da Obra / Entrega")
+            # Campo Transportador
+            transportador = st.text_input(
+                "Transportador (responsável pelo transporte)",
+                placeholder="Digite o nome da transportadora"
+            )
             
             observacoes = st.text_area("Observações (opcional)", height=100)
         
@@ -206,8 +211,8 @@ def pagina_cliente(usuario):
             # Validações
             if cliente_selecionado == "Outros" and not cliente_outros:
                 st.error("Por favor, digite o nome do cliente!")
-            elif not local:
-                st.error("Por favor, informe o local da obra!")
+            elif not transportador:
+                st.error("Por favor, informe o transportador responsável!")
             elif quant_caminhoes > 0 and not any(placas):
                 st.warning("Recomendamos informar as placas dos caminhões para melhor controle!")
             else:
@@ -219,7 +224,7 @@ def pagina_cliente(usuario):
                     toneladas,
                     quant_caminhoes,
                     placas_str,
-                    local,
+                    transportador,
                     observacoes
                 )
                 st.success(f"✅ Programação #{prog_id} enviada com sucesso!")
@@ -247,9 +252,9 @@ def pagina_cliente(usuario):
                 return f"{colors.get(val, '⚪')} {val}"
             
             # Exibir tabela
-            display_df = minhas_progs[['id', 'data', 'tipo_cbuq', 'toneladas', 'quant_caminhoes', 'placas', 'local', 'status']].copy()
+            display_df = minhas_progs[['id', 'data', 'tipo_cbuq', 'toneladas', 'quant_caminhoes', 'placas', 'transportador', 'status']].copy()
             display_df['status'] = display_df['status'].apply(cor_status)
-            display_df.columns = ['ID', 'Data', 'Tipo', 'Toneladas', 'Qtde Caminhões', 'Placas', 'Local', 'Status']
+            display_df.columns = ['ID', 'Data', 'Tipo', 'Toneladas', 'Qtde Caminhões', 'Placas', 'Transportador', 'Status']
             
             st.dataframe(display_df, use_container_width=True, hide_index=True)
         else:
@@ -343,7 +348,7 @@ def pagina_admin(usuario):
                         st.write(f"**Toneladas:** {row['toneladas']} t")
                         st.write(f"**Quantidade Caminhões:** {row['quant_caminhoes']}")
                         st.write(f"**Placas:** {row['placas'] if pd.notna(row['placas']) else 'Não informado'}")
-                        st.write(f"**Local:** {row['local']}")
+                        st.write(f"**Transportador:** {row['transportador'] if pd.notna(row['transportador']) else 'Não informado'}")
                     with col_b:
                         novo_status = st.selectbox(
                             "Status",
