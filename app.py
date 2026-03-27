@@ -131,13 +131,17 @@ def pagina_cliente(usuario):
     st.title(f"🏭 Bem-vindo, {usuario['nome']}!")
     st.markdown("### 📝 Faça sua Programação Diária")
     
+    # Aviso de campos obrigatórios
+    st.markdown("⚠️ **Campos com * são obrigatórios**")
+    st.markdown("---")
+    
     # Formulário de programação
     with st.form("form_programacao"):
         col1, col2 = st.columns(2)
         
         with col1:
             data_programacao = st.date_input(
-                "Data da Usinagem",
+                "Data da Usinagem *",
                 min_value=date.today(),
                 value=date.today()
             )
@@ -152,31 +156,32 @@ def pagina_cliente(usuario):
             ]
             
             cliente_selecionado = st.selectbox(
-                "Cliente (responsável pelo pagamento)",
+                "Cliente (responsável pelo pagamento) *",
                 opcoes_clientes
             )
             
             cliente_outros = ""
             if cliente_selecionado == "Outros":
-                cliente_outros = st.text_input("Digite o nome do cliente")
+                cliente_outros = st.text_input("Digite o nome do cliente *")
             
             # Novo tipo de CBUQ
             tipo_cbuq = st.selectbox(
-                "Tipo CBUQ",
+                "Tipo CBUQ *",
                 ["Faixa B", "Faixa C", "Faixa D", "Faixa D Aditivado", "EGL 16-19", "Gap-Graded", "PMQ"]
             )
             
             toneladas = st.number_input(
-                "Quantidade (Toneladas)",
+                "Quantidade (Toneladas) *",
                 min_value=1.0,
                 max_value=5000.0,
                 step=10.0,
-                format="%.1f"
+                format="%.1f",
+                value=1.0
             )
         
         with col2:
             quant_caminhoes = st.number_input(
-                "Quantidade de Caminhões",
+                "Quantidade de Caminhões *",
                 min_value=1,
                 max_value=50,
                 step=1,
@@ -184,8 +189,9 @@ def pagina_cliente(usuario):
             )
             
             # Campo para placas dos caminhões
-            st.markdown("#### Placas dos Caminhões")
+            st.markdown("#### Placas dos Caminhões *")
             placas = []
+            todas_placas_preenchidas = True
             for i in range(quant_caminhoes):
                 placa = st.text_input(
                     f"Caminhão {i+1} (formato: XXX-XXXX)",
@@ -193,13 +199,15 @@ def pagina_cliente(usuario):
                     placeholder="Ex: ABC-1234"
                 )
                 placas.append(placa)
+                if not placa:
+                    todas_placas_preenchidas = False
             
             # Juntar todas as placas em uma string separada por vírgula
             placas_str = ", ".join([p for p in placas if p])
             
             # Campo Transportador
             transportador = st.text_input(
-                "Transportador (responsável pelo transporte)",
+                "Transportador (responsável pelo transporte) *",
                 placeholder="Digite o nome da transportadora"
             )
             
@@ -208,13 +216,27 @@ def pagina_cliente(usuario):
         submitted = st.form_submit_button("📊 Enviar Programação", use_container_width=True)
         
         if submitted:
-            # Validações
+            # Lista para armazenar erros
+            erros = []
+            
+            # Validação de todos os campos obrigatórios
             if cliente_selecionado == "Outros" and not cliente_outros:
-                st.error("Por favor, digite o nome do cliente!")
-            elif not transportador:
-                st.error("Por favor, informe o transportador responsável!")
-            elif quant_caminhoes > 0 and not any(placas):
-                st.warning("Recomendamos informar as placas dos caminhões para melhor controle!")
+                erros.append("❌ Digite o nome do cliente")
+            
+            if not transportador:
+                erros.append("❌ Informe o transportador responsável")
+            
+            if quant_caminhoes > 0 and not todas_placas_preenchidas:
+                erros.append("❌ Preencha a placa de todos os caminhões")
+            
+            if toneladas <= 0:
+                erros.append("❌ Informe a quantidade de toneladas")
+            
+            # Exibir todos os erros se houver
+            if erros:
+                st.error("⚠️ **Não foi possível enviar a programação. Preencha todos os campos obrigatórios:**")
+                for erro in erros:
+                    st.write(erro)
             else:
                 prog_id = adicionar_programacao(
                     cliente_selecionado,
