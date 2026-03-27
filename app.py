@@ -34,7 +34,7 @@ def init_database():
     # Inicializar programações
     if not os.path.exists('database/programacoes.csv'):
         df_prog = pd.DataFrame(columns=[
-            'id', 'cliente', 'cliente_outros', 'data', 'tipo_cbuq', 'toneladas', 
+            'id', 'username', 'cliente', 'cliente_outros', 'data', 'tipo_cbuq', 'toneladas', 
             'quant_caminhoes', 'placas', 'transportador', 'status', 'data_solicitacao', 'observacoes'
         ])
         df_prog.to_csv('database/programacoes.csv', index=False)
@@ -55,7 +55,7 @@ def salvar_programacoes(df):
     """Salva programações"""
     df.to_csv('database/programacoes.csv', index=False)
 
-def adicionar_programacao(cliente, cliente_outros, data, tipo_cbuq, toneladas, quant_caminhoes, placas, transportador, observacoes):
+def adicionar_programacao(username, cliente, cliente_outros, data, tipo_cbuq, toneladas, quant_caminhoes, placas, transportador, observacoes):
     """Adiciona nova programação"""
     df = carregar_programacoes()
     
@@ -69,6 +69,7 @@ def adicionar_programacao(cliente, cliente_outros, data, tipo_cbuq, toneladas, q
     
     nova_prog = pd.DataFrame([{
         'id': novo_id,
+        'username': username,  # Guardar o username do cliente que fez a programação
         'cliente': nome_cliente,
         'cliente_outros': cliente_outros if cliente == "Outros" else "",
         'data': data,
@@ -239,6 +240,7 @@ def pagina_cliente(usuario):
                     st.write(erro)
             else:
                 prog_id = adicionar_programacao(
+                    usuario['username'],  # Passar o username do cliente
                     cliente_selecionado,
                     cliente_outros,
                     data_programacao,
@@ -258,8 +260,8 @@ def pagina_cliente(usuario):
     
     df_prog = carregar_programacoes()
     if not df_prog.empty:
-        # Filtrar programações do cliente
-        minhas_progs = df_prog[df_prog['cliente'] == usuario['username']].sort_values('data', ascending=False)
+        # Filtrar programações pelo username do cliente
+        minhas_progs = df_prog[df_prog['username'] == usuario['username']].sort_values('data', ascending=False)
         
         if not minhas_progs.empty:
             # Cores por status
@@ -363,7 +365,7 @@ def pagina_admin(usuario):
             
             # Editor de status
             for idx, row in df_filtrado.iterrows():
-                with st.expander(f"📦 Programação #{row['id']} - {row['cliente']} - {row['data']}"):
+                with st.expander(f"📦 Programação #{row['id']} - {row['cliente']} - {row['data']} - Usuário: {row['username']}"):
                     col_a, col_b = st.columns([3, 1])
                     with col_a:
                         st.write(f"**Tipo:** {row['tipo_cbuq']}")
