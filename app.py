@@ -34,8 +34,8 @@ def init_database():
     # Inicializar programações
     if not os.path.exists('database/programacoes.csv'):
         df_prog = pd.DataFrame(columns=[
-            'id', 'cliente', 'data', 'tipo_cbuq', 'toneladas', 'horario', 
-            'local', 'status', 'data_solicitacao', 'observacoes'
+            'id', 'cliente', 'cliente_outros', 'data', 'tipo_cbuq', 'toneladas', 
+            'quant_caminhoes', 'placas', 'local', 'status', 'data_solicitacao', 'observacoes'
         ])
         df_prog.to_csv('database/programacoes.csv', index=False)
 
@@ -55,20 +55,27 @@ def salvar_programacoes(df):
     """Salva programações"""
     df.to_csv('database/programacoes.csv', index=False)
 
-def adicionar_programacao(cliente, data, tipo_cbuq, toneladas, horario, local, observacoes):
+def adicionar_programacao(cliente, cliente_outros, data, tipo_cbuq, toneladas, quant_caminhoes, placas, local, observacoes):
     """Adiciona nova programação"""
     df = carregar_programacoes()
     
     # Gerar ID
     novo_id = len(df) + 1 if not df.empty else 1
     
+    # Definir nome do cliente final
+    nome_cliente = cliente
+    if cliente == "Outros" and cliente_outros:
+        nome_cliente = cliente_outros
+    
     nova_prog = pd.DataFrame([{
         'id': novo_id,
-        'cliente': cliente,
+        'cliente': nome_cliente,
+        'cliente_outros': cliente_outros if cliente == "Outros" else "",
         'data': data,
         'tipo_cbuq': tipo_cbuq,
         'toneladas': toneladas,
-        'horario': horario,
+        'quant_caminhoes': quant_caminhoes,
+        'placas': placas,
         'local': local,
         'status': 'Pendente',
         'data_solicitacao': datetime.now(),
@@ -135,6 +142,24 @@ def pagina_cliente(usuario):
                 value=date.today()
             )
             
+            # Lista de clientes
+            opcoes_clientes = [
+                "CONCEBRA - CONCESSIONARIA DAS RODOVIAS CENTRAIS DO BRASIL S.A.",
+                "CONCESSIONARIA DA RODOVIA BR 262 MG S.A.",
+                "CONCESSIONARIA RODOVIAS DO TRIANGULO SPE S.A.",
+                "ECO050 - CONCESSIONARIA DE RODOVIAS S.A.",
+                "Outros"
+            ]
+            
+            cliente_selecionado = st.selectbox(
+                "Cliente",
+                opcoes_clientes
+            )
+            
+            cliente_outros = ""
+            if cliente_selecionado == "Outros":
+                cliente_outros = st.text_input("Digite o nome do cliente")
+            
             tipo_cbuq = st.selectbox(
                 "Tipo de CBUQ",
                 ["CBUQ 0/19", "CBUQ 0/25", "CBUQ 0/12,5", "CBUQ 0/9,5", "CBUQ 0/32"]
@@ -149,7 +174,27 @@ def pagina_cliente(usuario):
             )
         
         with col2:
-            horario = st.time_input("Horário Desejado", value=datetime.now().time())
+            quant_caminhoes = st.number_input(
+                "Quantidade de Caminhões",
+                min_value=1,
+                max_value=50,
+                step=1,
+                value=1
+            )
+            
+            # Campo para placas dos caminhões
+            st.markdown("#### Placas dos Caminhões")
+            placas = []
+            for i in range(quant_caminhoes):
+                placa = st.text_input(
+                    f"Caminhão {i+1} (formato: XXX-XXXX)",
+                    key=f"placa_{i}",
+                    placeholder="Ex: ABC-1234"
+                )
+                placas.append(placa)
+            
+            # Juntar todas as placas em uma string separada por vírgula
+            placas_str = ", ".join([p for p in placas if p])
             
             local = st.text_input("Local da Obra / Entrega")
             
@@ -158,15 +203,22 @@ def pagina_cliente(usuario):
         submitted = st.form_submit_button("📊 Enviar Programação", use_container_width=True)
         
         if submitted:
-            if not local:
+            # Validações
+            if cliente_selecionado == "Outros" and not cliente_outros:
+                st.error("Por favor, digite o nome do cliente!")
+            elif not local:
                 st.error("Por favor, informe o local da obra!")
+            elif quant_caminhoes > 0 and not any(placas):
+                st.warning("Recomendamos informar as placas dos caminhões para melhor controle!")
             else:
                 prog_id = adicionar_programacao(
-                    usuario['username'],
+                    cliente_selecionado,
+                    cliente_outros,
                     data_programacao,
                     tipo_cbuq,
                     toneladas,
-                    horario.strftime("%H:%M"),
+                    quant_caminhoes,
+                    placas_str,
                     local,
                     observacoes
                 )
@@ -195,9 +247,9 @@ def pagina_cliente(usuario):
                 return f"{colors.get(val, '⚪')} {val}"
             
             # Exibir tabela
-            display_df = minhas_progs[['id', 'data', 'tipo_cbuq', 'toneladas', 'horario', 'local', 'status']].copy()
+            display_df = minhas_progs[['id', 'data', 'tipo_cbuq', 'toneladas', 'quant_caminhoes', 'placas', 'local', 'status']].copy()
             display_df['status'] = display_df['status'].apply(cor_status)
-            display_df.columns = ['ID', 'Data', 'Tipo', 'Toneladas', 'Horário', 'Local', 'Status']
+            display_df.columns = ['ID', 'Data', 'Tipo', 'Toneladas', 'Qtde Caminhões', 'Placas', 'Local', 'Status']
             
             st.dataframe(display_df, use_container_width=True, hide_index=True)
         else:
@@ -236,8 +288,8 @@ def pagina_admin(usuario):
                 st.metric("Pendentes", pendentes)
             
             with col4:
-                clientes_unicos = df_prog['cliente'].nunique()
-                st.metric("Clientes Ativos", clientes_unicos)
+                total_caminhoes = df_prog[df_prog['data'] >= date.today()]['quant_caminhoes'].sum()
+                st.metric("Total de Caminhões", f"{total_caminhoes:,.0f}")
             
             # Gráfico de programações por dia
             st.markdown("#### Programações por Dia")
@@ -282,18 +334,15 @@ def pagina_admin(usuario):
             # Tabela editável
             st.markdown("#### Programações")
             
-            # Selecionar colunas para exibir
-            colunas = ['id', 'cliente', 'data', 'tipo_cbuq', 'toneladas', 'horario', 'local', 'status']
-            df_edit = df_filtrado[colunas].copy()
-            
             # Editor de status
-            for idx, row in df_edit.iterrows():
+            for idx, row in df_filtrado.iterrows():
                 with st.expander(f"📦 Programação #{row['id']} - {row['cliente']} - {row['data']}"):
                     col_a, col_b = st.columns([3, 1])
                     with col_a:
                         st.write(f"**Tipo:** {row['tipo_cbuq']}")
                         st.write(f"**Toneladas:** {row['toneladas']} t")
-                        st.write(f"**Horário:** {row['horario']}")
+                        st.write(f"**Quantidade Caminhões:** {row['quant_caminhoes']}")
+                        st.write(f"**Placas:** {row['placas'] if pd.notna(row['placas']) else 'Não informado'}")
                         st.write(f"**Local:** {row['local']}")
                     with col_b:
                         novo_status = st.selectbox(
@@ -348,8 +397,6 @@ def pagina_admin(usuario):
     
     with tab4:
         st.markdown("### Configurações")
-        
-        # Aqui você pode adicionar configurações como capacidade das usinas, etc.
         st.info("Em desenvolvimento - Configure aqui a capacidade diária das usinas, horários de funcionamento, etc.")
 
 # ==================== LOGIN E MAIN ====================
@@ -359,7 +406,7 @@ def main():
     
     init_database()
     
-    # Login
+    # Login e Cadastro
     if 'autenticado' not in st.session_state:
         st.session_state.autenticado = False
     
@@ -367,25 +414,52 @@ def main():
         st.title("🏭 Sistema de Gestão de Usinagem - CBUQ")
         st.markdown("### Acesso ao Sistema")
         
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            with st.form("login"):
-                username = st.text_input("Usuário")
-                password = st.text_input("Senha", type="password")
-                submitted = st.form_submit_button("Entrar", use_container_width=True)
-                
-                if submitted:
-                    usuario = autenticar_usuario(username, password)
-                    if usuario:
-                        st.session_state.autenticado = True
-                        st.session_state.usuario = usuario
-                        st.rerun()
-                    else:
-                        st.error("Usuário ou senha inválidos!")
-            
-            st.markdown("---")
-            st.markdown("### Não tem cadastro?")
-            st.markdown("Entre em contato com o administrador para criar seu acesso.")
+        # Abas para Login e Cadastro
+        tab_login, tab_cadastro = st.tabs(["🔐 Login", "📝 Cadastrar-se"])
+        
+        with tab_login:
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                with st.form("login"):
+                    username = st.text_input("Usuário")
+                    password = st.text_input("Senha", type="password")
+                    submitted = st.form_submit_button("Entrar", use_container_width=True)
+                    
+                    if submitted:
+                        usuario = autenticar_usuario(username, password)
+                        if usuario:
+                            st.session_state.autenticado = True
+                            st.session_state.usuario = usuario
+                            st.rerun()
+                        else:
+                            st.error("Usuário ou senha inválidos!")
+        
+        with tab_cadastro:
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                with st.form("cadastro"):
+                    st.markdown("### Criar nova conta")
+                    
+                    novo_username = st.text_input("Usuário (login)")
+                    novo_nome = st.text_input("Nome completo")
+                    novo_email = st.text_input("E-mail")
+                    novo_telefone = st.text_input("Telefone (WhatsApp)")
+                    nova_senha = st.text_input("Senha", type="password")
+                    confirma_senha = st.text_input("Confirmar senha", type="password")
+                    
+                    cadastrar = st.form_submit_button("Cadastrar", use_container_width=True)
+                    
+                    if cadastrar:
+                        if not all([novo_username, novo_nome, novo_email, nova_senha]):
+                            st.error("Preencha todos os campos obrigatórios!")
+                        elif nova_senha != confirma_senha:
+                            st.error("As senhas não conferem!")
+                        else:
+                            if cadastrar_novo_usuario(novo_username, nova_senha, novo_nome, novo_email, novo_telefone):
+                                st.success("Cadastro realizado com sucesso! Faça login para continuar.")
+                                st.balloons()
+                            else:
+                                st.error("Usuário já existe! Escolha outro nome de usuário.")
     
     else:
         # Logout na sidebar
