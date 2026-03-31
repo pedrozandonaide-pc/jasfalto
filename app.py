@@ -2,8 +2,10 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, date
 import plotly.express as px
-import os
 import hashlib
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import json
 
 # Configuração da página
 st.set_page_config(
@@ -12,50 +14,137 @@ st.set_page_config(
     layout="wide"
 )
 
-# ==================== FUNÇÕES DE BANCO DE DADOS ====================
+# ==================== CONEXÃO COM GOOGLE SHEETS ====================
 
-def init_database():
-    """Inicializa os arquivos CSV se não existirem"""
-    
-    # Criar pasta database se não existir
-    if not os.path.exists('database'):
-        os.makedirs('database')
-    
-    # Inicializar usuários
-    if not os.path.exists('database/usuarios.csv'):
-        df_usuarios = pd.DataFrame(columns=[
-            'username', 'password_hash', 'nome', 'email', 'telefone', 'tipo', 'data_cadastro'
-        ])
-        # Criar usuário admin padrão
-        admin_hash = hashlib.sha256("admin123".encode()).hexdigest()
-        df_usuarios.loc[0] = ['admin', admin_hash, 'Administrador', 'admin@asfalto.com', '', 'admin', datetime.now()]
-        df_usuarios.to_csv('database/usuarios.csv', index=False)
-    
-    # Inicializar programações
-    if not os.path.exists('database/programacoes.csv'):
-        df_prog = pd.DataFrame(columns=[
-            'id', 'username', 'cliente', 'cliente_outros', 'data', 'tipo_cbuq', 'toneladas', 
-            'quant_caminhoes', 'placas', 'transportador', 'status', 'data_solicitacao', 'observacoes'
-        ])
-        df_prog.to_csv('database/programacoes.csv', index=False)
+def conectar_google_sheets():
+    """Conecta ao Google Sheets"""
+    try:
+        # Usar secrets do Streamlit Cloud
+        if 'google' in st.secrets:
+            scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(
+                st.secrets["google"], 
+                scope
+            )
+            client = gspread.authorize(creds)
+            
+            # Abrir planilha pelo ID
+            sheet_id = st.secrets["google_sheet_id"]
+            spreadsheet = client.open_by_key(sheet_id)
+            
+            return spreadsheet
+        else:
+            st.error("Configure as secrets do Google Sheets no Streamlit Cloud")
+            return None
+    except Exception as e:
+        st.error(f"Erro ao conectar ao Google Sheets: {e}")
+        return None
 
 def carregar_usuarios():
-    """Carrega lista de usuários"""
-    return pd.read_csv('database/usuarios.csv')
+    """Carrega usuários do Google Sheets"""
+    try:
+        spreadsheet = conectar_google_sheets()
+        if spreadsheet:
+            worksheet = spreadsheet.worksheet("usuarios")
+            dados = worksheet.get_all_records()
+            if dados:
+                return pd.DataFrame(dados)
+            else:
+                # Criar usuário admin se não existir
+                df_usuarios = pd.DataFrame(columns=[
+                    'username', 'password_hash', 'nome', 'email', 'telefone', 'cargo', 'tipo', 'data_cadastro'
+                ])
+                admin_hash = hashlib.sha256("admin123".encode()).hexdigest()
+                nova_linha = [['admin', admin_hash, 'Administrador', 'admin@asfalto.com', '', 'Administrador', 'admin', datetime.now().isoformat()]]
+                worksheet.append_rows(nova_linha)
+                return df_usuarios
+        return pd.DataFrame()
+    except Exception as e:
+        st.error(f"Erro ao carregar usuários: {e}")
+        return pd.DataFrame()
+
+def salvar_usuario(username, password_hash, nome, email, telefone, cargo, tipo):
+    """Salva novo usuário no Google Sheets"""
+    try:
+        spreadsheet = conectar_google_sheets()
+        if spreadsheet:
+            worksheet = spreadsheet.worksheet("usuarios")
+            nova_linha = [[username, password_hash, nome, email, telefone, cargo, tipo, datetime.now().isoformat()]]
+            worksheet.append_rows(nova_linha)
+            return True
+    except Exception as e:
+        st.error(f"Erro ao salvar usuário: {e}")
+        return False
 
 def carregar_programacoes():
-    """Carrega programações"""
-    df = pd.read_csv('database/programacoes.csv')
-    if not df.empty and 'data' in df.columns:
-        df['data'] = pd.to_datetime(df['data']).dt.date
-        df['data_solicitacao'] = pd.to_datetime(df['data_solicitacao'])
-    return df
+    """Carrega programações do Google Sheets"""
+    try:
+        spreadsheet = conectar_google_sheets()
+        if spreadsheet:
+            worksheet = spreadsheet.worksheet("programacoes")
+            dados = worksheet.get_all_records()
+            if dados:
+                df = pd.DataFrame(dados)
+                df['data'] = pd.to_datetime(df['data']).dt.date
+                df['data_solicitacao'] = pd.to_datetime(df['data_solicitacao'])
+                return df
+        return pd.DataFrame(columns=[
+            'id', 'username', 'cliente', 'cliente_outros', 'data', 'produto', 'toneladas', 
+            'quant_caminhoes', 'placas', 'transportador', 'status', 'data_solicitacao', 'observacoes'
+        ])
+    except Exception as e:
+        st.error(f"Erro ao carregar programações: {e}")
+        return pd.DataFrame()
 
-def salvar_programacoes(df):
-    """Salva programações"""
-    df.to_csv('database/programacoes.csv', index=False)
+def salvar_programacao(programacao):
+    """Salva nova programação no Google Sheets"""
+    try:
+        spreadsheet = conectar_google_sheets()
+        if spreadsheet:
+            worksheet = spreadsheet.worksheet("programacoes")
+            nova_linha = [[
+                programacao['id'],
+                programacao['username'],
+                programacao['cliente'],
+                programacao['cliente_outros'],
+                programacao['data'].isoformat(),
+                programacao['produto'],
+                programacao['toneladas'],
+                programacao['quant_caminhoes'],
+                programacao['placas'],
+                programacao['transportador'],
+                programacao['status'],
+                programacao['data_solicitacao'].isoformat(),
+                programacao['observacoes']
+            ]]
+            worksheet.append_rows(nova_linha)
+            return True
+    except Exception as e:
+        st.error(f"Erro ao salvar programação: {e}")
+        return False
 
-def adicionar_programacao(username, cliente, cliente_outros, data, tipo_cbuq, toneladas, quant_caminhoes, placas, transportador, observacoes):
+def atualizar_status_programacao(id_programacao, novo_status):
+    """Atualiza o status de uma programação"""
+    try:
+        spreadsheet = conectar_google_sheets()
+        if spreadsheet:
+            worksheet = spreadsheet.worksheet("programacoes")
+            dados = worksheet.get_all_records()
+            
+            # Encontrar a linha do programa
+            for idx, row in enumerate(dados, start=2):  # start=2 porque a linha 1 é cabeçalho
+                if str(row['id']) == str(id_programacao):
+                    # Encontrar a coluna de status
+                    coluna_status = list(row.keys()).index('status') + 1
+                    worksheet.update_cell(idx, coluna_status, novo_status)
+                    return True
+        return False
+    except Exception as e:
+        st.error(f"Erro ao atualizar status: {e}")
+        return False
+
+def adicionar_programacao(username, cliente, cliente_outros, data, produto, toneladas, 
+                         quant_caminhoes, placas, transportador, observacoes):
     """Adiciona nova programação"""
     df = carregar_programacoes()
     
@@ -64,16 +153,16 @@ def adicionar_programacao(username, cliente, cliente_outros, data, tipo_cbuq, to
     
     # Definir nome do cliente final
     nome_cliente = cliente
-    if cliente == "Outros" and cliente_outros:
+    if cliente == "OUTROS" and cliente_outros:
         nome_cliente = cliente_outros
     
-    nova_prog = pd.DataFrame([{
+    programacao = {
         'id': novo_id,
-        'username': username,  # Guardar o username do cliente que fez a programação
+        'username': username,
         'cliente': nome_cliente,
-        'cliente_outros': cliente_outros if cliente == "Outros" else "",
+        'cliente_outros': cliente_outros if cliente == "OUTROS" else "",
         'data': data,
-        'tipo_cbuq': tipo_cbuq,
+        'produto': produto,
         'toneladas': toneladas,
         'quant_caminhoes': quant_caminhoes,
         'placas': placas,
@@ -81,11 +170,11 @@ def adicionar_programacao(username, cliente, cliente_outros, data, tipo_cbuq, to
         'status': 'Pendente',
         'data_solicitacao': datetime.now(),
         'observacoes': observacoes
-    }])
+    }
     
-    df = pd.concat([df, nova_prog], ignore_index=True)
-    salvar_programacoes(df)
-    return novo_id
+    if salvar_programacao(programacao):
+        return novo_id
+    return None
 
 def autenticar_usuario(username, password):
     """Verifica credenciais do usuário"""
@@ -97,11 +186,12 @@ def autenticar_usuario(username, password):
         return {
             'username': username,
             'nome': usuario.iloc[0]['nome'],
+            'cargo': usuario.iloc[0]['cargo'] if 'cargo' in usuario.columns else '',
             'tipo': usuario.iloc[0]['tipo']
         }
     return None
 
-def cadastrar_novo_usuario(username, password, nome, email, telefone, tipo='cliente'):
+def cadastrar_novo_usuario(username, password, nome, email, telefone, cargo, tipo='cliente'):
     """Cadastra novo usuário"""
     df_usuarios = carregar_usuarios()
     
@@ -110,19 +200,10 @@ def cadastrar_novo_usuario(username, password, nome, email, telefone, tipo='clie
         return False
     
     password_hash = hashlib.sha256(password.encode()).hexdigest()
-    novo_usuario = pd.DataFrame([{
-        'username': username,
-        'password_hash': password_hash,
-        'nome': nome,
-        'email': email,
-        'telefone': telefone,
-        'tipo': tipo,
-        'data_cadastro': datetime.now()
-    }])
     
-    df_usuarios = pd.concat([df_usuarios, novo_usuario], ignore_index=True)
-    df_usuarios.to_csv('database/usuarios.csv', index=False)
-    return True
+    if salvar_usuario(username, password_hash, nome, email, telefone, cargo, tipo):
+        return True
+    return False
 
 # ==================== INTERFACE DO CLIENTE ====================
 
@@ -130,6 +211,8 @@ def pagina_cliente(usuario):
     """Página para clientes fazerem programações"""
     
     st.title(f"🏭 Bem-vindo, {usuario['nome']}!")
+    if usuario['cargo']:
+        st.caption(f"Cargo: {usuario['cargo']}")
     st.markdown("### 📝 Faça sua Programação Diária")
     
     # Aviso de campos obrigatórios
@@ -147,13 +230,15 @@ def pagina_cliente(usuario):
                 value=date.today()
             )
             
-            # Lista de clientes
+            # Lista de clientes atualizada
             opcoes_clientes = [
                 "CONCEBRA - CONCESSIONARIA DAS RODOVIAS CENTRAIS DO BRASIL S.A.",
-                "CONCESSIONARIA DA RODOVIA BR 262 MG S.A.",
-                "CONCESSIONARIA RODOVIAS DO TRIANGULO SPE S.A.",
+                "WAY 262 - CONCESSIONARIA DA RODOVIA BR 262 MG S.A.",
+                "WAY 153 - CONCESSIONARIA ROTA SERTANEJA MG-GO S.A",
+                "EPR TRIÂNGULO - CONCESSIONARIA RODOVIAS DO TRIANGULO SPE S.A.",
                 "ECO050 - CONCESSIONARIA DE RODOVIAS S.A.",
-                "Outros"
+                "PAVIÁGIL CONSTRUÇÕES E COMÉRCIO LTDA",
+                "OUTROS"
             ]
             
             cliente_selecionado = st.selectbox(
@@ -162,13 +247,13 @@ def pagina_cliente(usuario):
             )
             
             cliente_outros = ""
-            if cliente_selecionado == "Outros":
+            if cliente_selecionado == "OUTROS":
                 cliente_outros = st.text_input("Digite o nome do cliente *")
             
-            # Novo tipo de CBUQ
-            tipo_cbuq = st.selectbox(
-                "Tipo CBUQ *",
-                ["Faixa B", "Faixa C", "Faixa D", "Faixa D Aditivado", "EGL 16-19", "Gap-Graded", "PMQ"]
+            # Produto com novas opções
+            produto = st.selectbox(
+                "Produto *",
+                ["Faixa B", "Faixa C", "Faixa D", "Faixa D Aditivado", "EGL 16-19", "Gap-Graded", "PMQ", "Emulsão RR-1C", "CM-IMP"]
             )
             
             toneladas = st.number_input(
@@ -221,7 +306,7 @@ def pagina_cliente(usuario):
             erros = []
             
             # Validação de todos os campos obrigatórios
-            if cliente_selecionado == "Outros" and not cliente_outros:
+            if cliente_selecionado == "OUTROS" and not cliente_outros:
                 erros.append("❌ Digite o nome do cliente")
             
             if not transportador:
@@ -240,19 +325,22 @@ def pagina_cliente(usuario):
                     st.write(erro)
             else:
                 prog_id = adicionar_programacao(
-                    usuario['username'],  # Passar o username do cliente
+                    usuario['username'],
                     cliente_selecionado,
                     cliente_outros,
                     data_programacao,
-                    tipo_cbuq,
+                    produto,
                     toneladas,
                     quant_caminhoes,
                     placas_str,
                     transportador,
                     observacoes
                 )
-                st.success(f"✅ Programação #{prog_id} enviada com sucesso!")
-                st.balloons()
+                if prog_id:
+                    st.success(f"✅ Programação #{prog_id} enviada com sucesso!")
+                    st.balloons()
+                else:
+                    st.error("Erro ao salvar programação. Tente novamente.")
     
     # Exibir programações do cliente
     st.markdown("---")
@@ -276,9 +364,9 @@ def pagina_cliente(usuario):
                 return f"{colors.get(val, '⚪')} {val}"
             
             # Exibir tabela
-            display_df = minhas_progs[['id', 'data', 'tipo_cbuq', 'toneladas', 'quant_caminhoes', 'placas', 'transportador', 'status']].copy()
+            display_df = minhas_progs[['id', 'data', 'produto', 'toneladas', 'quant_caminhoes', 'placas', 'transportador', 'status']].copy()
             display_df['status'] = display_df['status'].apply(cor_status)
-            display_df.columns = ['ID', 'Data', 'Tipo', 'Toneladas', 'Qtde Caminhões', 'Placas', 'Transportador', 'Status']
+            display_df.columns = ['ID', 'Data', 'Produto', 'Toneladas', 'Qtde Caminhões', 'Placas', 'Transportador', 'Status']
             
             st.dataframe(display_df, use_container_width=True, hide_index=True)
         else:
@@ -327,11 +415,11 @@ def pagina_admin(usuario):
                 fig = px.bar(prog_por_dia, x='data', y='quantidade', title="Quantidade de Programações por Dia")
                 st.plotly_chart(fig, use_container_width=True)
             
-            # Gráfico de toneladas por tipo
-            st.markdown("#### Toneladas por Tipo de CBUQ")
-            ton_por_tipo = df_prog[df_prog['data'] >= date.today()].groupby('tipo_cbuq')['toneladas'].sum().reset_index()
-            if not ton_por_tipo.empty:
-                fig2 = px.pie(ton_por_tipo, values='toneladas', names='tipo_cbuq', title="Distribuição por Tipo")
+            # Gráfico de toneladas por produto
+            st.markdown("#### Toneladas por Produto")
+            ton_por_produto = df_prog[df_prog['data'] >= date.today()].groupby('produto')['toneladas'].sum().reset_index()
+            if not ton_por_produto.empty:
+                fig2 = px.pie(ton_por_produto, values='toneladas', names='produto', title="Distribuição por Produto")
                 st.plotly_chart(fig2, use_container_width=True)
         else:
             st.info("Nenhuma programação cadastrada ainda.")
@@ -343,7 +431,7 @@ def pagina_admin(usuario):
         
         if not df_prog.empty:
             # Filtros
-            col_f1, col_f2, col_f3 = st.columns(3)
+            col_f1, col_f2 = st.columns(2)
             with col_f1:
                 filtro_status = st.multiselect(
                     "Filtrar por Status",
@@ -368,7 +456,7 @@ def pagina_admin(usuario):
                 with st.expander(f"📦 Programação #{row['id']} - {row['cliente']} - {row['data']} - Usuário: {row['username']}"):
                     col_a, col_b = st.columns([3, 1])
                     with col_a:
-                        st.write(f"**Tipo:** {row['tipo_cbuq']}")
+                        st.write(f"**Produto:** {row['produto']}")
                         st.write(f"**Toneladas:** {row['toneladas']} t")
                         st.write(f"**Quantidade Caminhões:** {row['quant_caminhoes']}")
                         st.write(f"**Placas:** {row['placas'] if pd.notna(row['placas']) else 'Não informado'}")
@@ -382,9 +470,8 @@ def pagina_admin(usuario):
                         )
                         if novo_status != row['status']:
                             # Atualizar status
-                            df_prog.loc[df_prog['id'] == row['id'], 'status'] = novo_status
-                            salvar_programacoes(df_prog)
-                            st.rerun()
+                            if atualizar_status_programacao(row['id'], novo_status):
+                                st.rerun()
         else:
             st.info("Nenhuma programação cadastrada.")
     
@@ -396,7 +483,7 @@ def pagina_admin(usuario):
         
         if not clientes.empty:
             st.dataframe(
-                clientes[['username', 'nome', 'email', 'telefone', 'data_cadastro']],
+                clientes[['username', 'nome', 'email', 'telefone', 'cargo', 'data_cadastro']],
                 use_container_width=True,
                 hide_index=True
             )
@@ -405,18 +492,19 @@ def pagina_admin(usuario):
             with st.form("form_novo_cliente"):
                 col_a, col_b = st.columns(2)
                 with col_a:
-                    novo_username = st.text_input("Usuário (login)")
-                    novo_nome = st.text_input("Nome Completo")
-                    novo_email = st.text_input("E-mail")
+                    novo_username = st.text_input("Usuário (login) *")
+                    novo_nome = st.text_input("Nome Completo *")
+                    novo_email = st.text_input("E-mail *")
+                    novo_cargo = st.text_input("Função/Cargo *")
                 with col_b:
-                    nova_senha = st.text_input("Senha", type="password")
+                    nova_senha = st.text_input("Senha *", type="password")
                     novo_telefone = st.text_input("Telefone (WhatsApp)")
                 
                 cadastrar = st.form_submit_button("Cadastrar Cliente")
                 
                 if cadastrar:
-                    if all([novo_username, nova_senha, novo_nome, novo_email]):
-                        if cadastrar_novo_usuario(novo_username, nova_senha, novo_nome, novo_email, novo_telefone):
+                    if all([novo_username, nova_senha, novo_nome, novo_email, novo_cargo]):
+                        if cadastrar_novo_usuario(novo_username, nova_senha, novo_nome, novo_email, novo_telefone, novo_cargo):
                             st.success(f"Cliente {novo_nome} cadastrado com sucesso!")
                             st.rerun()
                         else:
@@ -426,16 +514,14 @@ def pagina_admin(usuario):
     
     with tab4:
         st.markdown("### Configurações")
-        st.info("Em desenvolvimento - Configure aqui a capacidade diária das usinas, horários de funcionamento, etc.")
+        st.info("✅ Dados salvos permanentemente no Google Sheets. Não há risco de perda de dados.")
+        st.info("📋 As programações são salvas em tempo real e podem ser consultadas a qualquer momento.")
 
 # ==================== LOGIN E MAIN ====================
 
 def main():
     """Função principal"""
     
-    init_database()
-    
-    # Login e Cadastro
     if 'autenticado' not in st.session_state:
         st.session_state.autenticado = False
     
@@ -469,22 +555,23 @@ def main():
                 with st.form("cadastro"):
                     st.markdown("### Criar nova conta")
                     
-                    novo_username = st.text_input("Usuário (login)")
-                    novo_nome = st.text_input("Nome completo")
-                    novo_email = st.text_input("E-mail")
+                    novo_username = st.text_input("Usuário (login) *")
+                    novo_nome = st.text_input("Nome completo *")
+                    novo_email = st.text_input("E-mail *")
                     novo_telefone = st.text_input("Telefone (WhatsApp)")
-                    nova_senha = st.text_input("Senha", type="password")
-                    confirma_senha = st.text_input("Confirmar senha", type="password")
+                    novo_cargo = st.text_input("Função/Cargo *")
+                    nova_senha = st.text_input("Senha *", type="password")
+                    confirma_senha = st.text_input("Confirmar senha *", type="password")
                     
                     cadastrar = st.form_submit_button("Cadastrar", use_container_width=True)
                     
                     if cadastrar:
-                        if not all([novo_username, novo_nome, novo_email, nova_senha]):
+                        if not all([novo_username, novo_nome, novo_email, novo_cargo, nova_senha]):
                             st.error("Preencha todos os campos obrigatórios!")
                         elif nova_senha != confirma_senha:
                             st.error("As senhas não conferem!")
                         else:
-                            if cadastrar_novo_usuario(novo_username, nova_senha, novo_nome, novo_email, novo_telefone):
+                            if cadastrar_novo_usuario(novo_username, nova_senha, novo_nome, novo_email, novo_telefone, novo_cargo):
                                 st.success("Cadastro realizado com sucesso! Faça login para continuar.")
                                 st.balloons()
                             else:
@@ -494,6 +581,8 @@ def main():
         # Logout na sidebar
         with st.sidebar:
             st.markdown(f"### 👤 {st.session_state.usuario['nome']}")
+            if st.session_state.usuario['cargo']:
+                st.markdown(f"*{st.session_state.usuario['cargo']}*")
             st.markdown(f"*{st.session_state.usuario['tipo'].upper()}*")
             st.markdown("---")
             
