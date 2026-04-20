@@ -29,7 +29,7 @@ def carregar_logo():
 
 # ==================== FUNÇÃO PARA GERAR PDF COM GRÁFICO ====================
 def gerar_grafico_toneladas_por_data_produto(df):
-    """Gera gráfico de barras empilhadas por data e produto com cores personalizadas"""
+    """Gera gráfico de barras empilhadas por data e produto com cores personalizadas e textos legíveis"""
     
     # Definir um mapa de cores fixo para cada produto
     cores_produtos = {
@@ -60,30 +60,41 @@ def gerar_grafico_toneladas_por_data_produto(df):
         color_discrete_map=cores_produtos
     )
     
+    # Corrigir a cor do texto dentro das barras
     fig.update_traces(
-        texttemplate='%{text:.1f}t', 
+        texttemplate='%{text:.1f}t',
         textposition='inside',
-        textfont=dict(size=11, color='white')
+        textfont=dict(size=11, color='black', weight='bold')
     )
     
     fig.update_layout(
         xaxis_title="Data",
         yaxis_title="Toneladas",
-        xaxis={'tickformat': '%d/%m/%Y', 'tickangle': -45},
-        yaxis={'gridcolor': '#e0e0e0'},
+        xaxis={
+            'tickformat': '%d/%m/%Y',
+            'tickangle': -45,
+            'tickfont': dict(size=12, color='black')
+        },
+        yaxis={
+            'gridcolor': '#e0e0e0',
+            'tickfont': dict(size=12, color='black'),
+            'title_font': dict(size=14, color='black')
+        },
         height=500,
         plot_bgcolor='white',
         paper_bgcolor='white',
+        title_font=dict(size=16, color='black'),
         legend=dict(
             yanchor="top",
             y=0.99,
             xanchor="left",
             x=0.01,
-            bgcolor='rgba(255, 255, 255, 0.8)',
+            bgcolor='rgba(255, 255, 255, 0.9)',
             bordercolor='#ccc',
-            borderwidth=1
+            borderwidth=1,
+            font=dict(size=11, color='black')
         ),
-        font=dict(family="Arial, sans-serif", size=12)
+        font=dict(family="Arial, sans-serif", size=12, color='black')
     )
     
     return fig
