@@ -20,24 +20,22 @@ st.set_page_config(
 def carregar_logo():
     """Carrega a logomarca da empresa"""
     try:
-        # Tentar carregar do arquivo local
         with open("Logo Jasfalto.jpeg", "rb") as img_file:
             logo_bytes = img_file.read()
             logo_base64 = base64.b64encode(logo_bytes).decode()
             return f"data:image/jpeg;base64,{logo_base64}"
     except:
-        # Se não encontrar, retorna None
         return None
 
 # ==================== FUNÇÃO PARA GERAR PDF ====================
-def gerar_pdf_html(df, data_inicio, data_fim):
-    """Gera HTML para converter em PDF"""
+def gerar_pdf_html(df_detalhado, df_resumo, data_inicio, data_fim):
+    """Gera HTML para converter em PDF com detalhamento por caminhão"""
     html = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <meta charset="UTF-8">
-        <title>Relatório de Programações</title>
+        <title>Relatório de Programações - JASFALTO</title>
         <style>
             body {{
                 font-family: Arial, sans-serif;
@@ -46,6 +44,10 @@ def gerar_pdf_html(df, data_inicio, data_fim):
             h1 {{
                 color: #333;
                 text-align: center;
+            }}
+            h2 {{
+                color: #555;
+                margin-top: 30px;
             }}
             .header {{
                 text-align: center;
@@ -56,10 +58,21 @@ def gerar_pdf_html(df, data_inicio, data_fim):
                 color: #666;
                 margin-bottom: 20px;
             }}
+            .resumo {{
+                background-color: #f0f0f0;
+                padding: 15px;
+                border-radius: 5px;
+                margin-bottom: 30px;
+            }}
+            .resumo h3 {{
+                margin-top: 0;
+                color: #333;
+            }}
             table {{
                 width: 100%;
                 border-collapse: collapse;
                 margin-top: 20px;
+                margin-bottom: 30px;
             }}
             th {{
                 background-color: #4CAF50;
@@ -81,6 +94,12 @@ def gerar_pdf_html(df, data_inicio, data_fim):
                 margin-top: 30px;
                 font-size: 12px;
                 color: #666;
+                position: fixed;
+                bottom: 0;
+                width: 100%;
+            }}
+            .page-break {{
+                page-break-before: always;
             }}
         </style>
     </html>
@@ -94,7 +113,16 @@ def gerar_pdf_html(df, data_inicio, data_fim):
         <div class="periodo">
             <strong>Data de emissão:</strong> {datetime.now().strftime('%d/%m/%Y %H:%M')}
         </div>
-        {df.to_html(index=False)}
+        
+        <div class="resumo">
+            <h3>📊 RESUMO GERAL</h3>
+            {df_resumo.to_html(index=False)}
+        </div>
+        
+        <h2>📋 DETALHAMENTO POR CAMINHÃO</h2>
+        <p><strong>Total de viagens:</strong> {len(df_detalhado)}</p>
+        {df_detalhado.to_html(index=False)}
+        
         <div class="footer">
             <p>Relatório gerado automaticamente pelo Sistema de Gestão de Usinagem JASFALTO</p>
         </div>
@@ -102,6 +130,28 @@ def gerar_pdf_html(df, data_inicio, data_fim):
     </html>
     """
     return html
+
+def expandir_por_caminhao(df_filtrado):
+    """Expande o DataFrame para uma linha por caminhão"""
+    registros_expandidos = []
+    
+    for idx, row in df_filtrado.iterrows():
+        placas = row['placas'].split(', ') if pd.notna(row['placas']) and row['placas'] else []
+        
+        if placas:
+            for placa in placas:
+                if placa.strip():
+                    novo_registro = row.copy()
+                    novo_registro['placa'] = placa.strip()
+                    registros_expandidos.append(novo_registro)
+        else:
+            novo_registro = row.copy()
+            novo_registro['placa'] = 'Não informado'
+            registros_expandidos.append(novo_registro)
+    
+    if registros_expandidos:
+        return pd.DataFrame(registros_expandidos)
+    return pd.DataFrame()
 
 # ==================== CONEXÃO COM GOOGLE SHEETS ====================
 
@@ -122,7 +172,6 @@ def conectar_google_sheets():
         sheet_id = st.secrets["google_sheet_id"]
         spreadsheet = client.open_by_key(sheet_id)
         
-        # Verificar e criar aba "usuarios" se não existir
         try:
             worksheet_usuarios = spreadsheet.worksheet("usuarios")
         except gspread.exceptions.WorksheetNotFound:
@@ -130,7 +179,6 @@ def conectar_google_sheets():
             cabecalhos = ['username', 'password_hash', 'nome', 'email', 'telefone', 'cargo', 'tipo', 'data_cadastro']
             worksheet_usuarios.insert_row(cabecalhos, 1)
         
-        # Verificar e criar aba "programacoes" se não existir
         try:
             worksheet_programacoes = spreadsheet.worksheet("programacoes")
         except gspread.exceptions.WorksheetNotFound:
@@ -406,7 +454,6 @@ def pagina_cliente(usuario):
                 placeholder="Digite o nome da transportadora"
             )
             
-            # Nova opção: Usina - Localidade
             usina = st.selectbox(
                 "Usina - Localidade *",
                 ["Jasfalto - Uberaba/MG", "Jasfalto - Araguari/MG"]
@@ -528,26 +575,63 @@ def pagina_admin(usuario):
             # Botão para gerar PDF
             if st.button("📄 Gerar Relatório PDF", use_container_width=True):
                 if not df_filtrado.empty:
-                    # Preparar dados para o PDF
-                    df_pdf = df_filtrado[['id', 'cliente', 'data', 'produto', 'toneladas', 
-                                          'quant_caminhoes', 'transportador', 'usina', 'status']].copy()
-                    df_pdf.columns = ['ID', 'Cliente', 'Data', 'Produto', 'Toneladas', 
-                                      'Qtde Caminhões', 'Transportador', 'Usina', 'Status']
+                    # Expandir por caminhão para o detalhamento
+                    df_detalhado = expandir_por_caminhao(df_filtrado)
                     
-                    html = gerar_pdf_html(df_pdf, data_inicio.strftime('%d/%m/%Y'), data_fim.strftime('%d/%m/%Y'))
-                    
-                    # Converter para bytes
-                    pdf_bytes = html.encode()
-                    
-                    st.download_button(
-                        label="📥 Baixar PDF",
-                        data=pdf_bytes,
-                        file_name=f"relatorio_programacoes_{data_inicio}_{data_fim}.html",
-                        mime="text/html",
-                        use_container_width=True
-                    )
+                    if not df_detalhado.empty:
+                        # Preparar dados detalhados (uma linha por caminhão)
+                        df_pdf_detalhado = df_detalhado[['cliente', 'data', 'produto', 'placa', 'transportador', 'usina', 'status']].copy()
+                        df_pdf_detalhado.columns = ['Cliente', 'Data', 'Produto', 'Placa', 'Transportador', 'Usina', 'Status']
+                        
+                        # Preparar resumo
+                        resumo = df_filtrado.groupby('cliente').agg({
+                            'toneladas': 'sum',
+                            'quant_caminhoes': 'sum'
+                        }).reset_index()
+                        resumo.columns = ['Cliente', 'Total Toneladas', 'Total de Viagens']
+                        
+                        html = gerar_pdf_html(df_pdf_detalhado, resumo, data_inicio.strftime('%d/%m/%Y'), data_fim.strftime('%d/%m/%Y'))
+                        
+                        st.download_button(
+                            label="📥 Baixar PDF",
+                            data=html.encode(),
+                            file_name=f"relatorio_programacoes_{data_inicio.strftime('%Y%m%d')}_{data_fim.strftime('%Y%m%d')}.html",
+                            mime="text/html",
+                            use_container_width=True
+                        )
+                    else:
+                        st.warning("Não foi possível gerar o relatório. Verifique os dados.")
+                else:
+                    st.warning("Nenhum dado encontrado no período selecionado.")
             
             st.markdown("---")
+            
+            # Gráfico melhorado: Toneladas por Data
+            st.markdown("#### Toneladas por Data")
+            
+            # Agrupar por data e somar toneladas
+            toneladas_por_data = df_filtrado.groupby('data')['toneladas'].sum().reset_index()
+            toneladas_por_data.columns = ['Data', 'Toneladas']
+            
+            if not toneladas_por_data.empty:
+                fig = px.bar(
+                    toneladas_por_data, 
+                    x='Data', 
+                    y='Toneladas',
+                    title="Somatório de Toneladas por Dia",
+                    labels={'Data': 'Data', 'Toneladas': 'Toneladas'},
+                    text='Toneladas'
+                )
+                fig.update_traces(texttemplate='%{text:.1f}t', textposition='outside')
+                fig.update_layout(
+                    xaxis_title="Data",
+                    yaxis_title="Toneladas",
+                    xaxis={'tickformat': '%d/%m/%Y'},
+                    height=500
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Sem dados para exibir no gráfico")
             
             # Métricas
             col1, col2, col3, col4 = st.columns(4)
@@ -566,28 +650,18 @@ def pagina_admin(usuario):
             
             with col4:
                 total_caminhoes = df_filtrado['quant_caminhoes'].sum()
-                st.metric("Total de Caminhões", f"{total_caminhoes:,.0f}")
+                st.metric("Total de Viagens", f"{total_caminhoes:,.0f}")
             
-            # Gráficos
-            col_g1, col_g2 = st.columns(2)
-            
-            with col_g1:
-                st.markdown("#### Programações por Dia")
-                prog_por_dia = df_filtrado.groupby('data').size().reset_index(name='quantidade')
-                if not prog_por_dia.empty:
-                    fig = px.bar(prog_por_dia, x='data', y='quantidade', title="Quantidade de Programações por Dia")
-                    st.plotly_chart(fig, use_container_width=True)
-            
-            with col_g2:
-                st.markdown("#### Toneladas por Produto")
-                ton_por_produto = df_filtrado.groupby('produto')['toneladas'].sum().reset_index()
-                if not ton_por_produto.empty:
-                    fig2 = px.pie(ton_por_produto, values='toneladas', names='produto', title="Distribuição por Produto")
-                    st.plotly_chart(fig2, use_container_width=True)
+            # Gráfico de toneladas por produto
+            st.markdown("#### Toneladas por Produto")
+            ton_por_produto = df_filtrado.groupby('produto')['toneladas'].sum().reset_index()
+            if not ton_por_produto.empty:
+                fig2 = px.pie(ton_por_produto, values='toneladas', names='produto', title="Distribuição por Produto")
+                st.plotly_chart(fig2, use_container_width=True)
             
             # Tabela de dados
             st.markdown("#### Dados Filtrados")
-            st.dataframe(df_filtrado[['id', 'cliente', 'data', 'produto', 'toneladas', 'usina', 'status']], 
+            st.dataframe(df_filtrado[['id', 'cliente', 'data', 'produto', 'toneladas', 'quant_caminhoes', 'usina', 'status']], 
                         use_container_width=True, hide_index=True)
         else:
             st.info("Nenhuma programação cadastrada ainda.")
@@ -697,14 +771,12 @@ def pagina_admin(usuario):
 def main():
     """Função principal"""
     
-    # Carregar logo
     logo = carregar_logo()
     
     if 'autenticado' not in st.session_state:
         st.session_state.autenticado = False
     
     if not st.session_state.autenticado:
-        # Exibir logo na página de login
         if logo:
             col_logo1, col_logo2, col_logo3 = st.columns([1, 2, 1])
             with col_logo2:
@@ -762,7 +834,6 @@ def main():
     
     else:
         with st.sidebar:
-            # Exibir logo na sidebar
             if logo:
                 st.image(logo, use_container_width=True)
                 st.markdown("---")
