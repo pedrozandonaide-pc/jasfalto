@@ -6,13 +6,102 @@ import hashlib
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
+from io import BytesIO
+import base64
 
 # Configuração da página
 st.set_page_config(
-    page_title="Gestão de Usinagem - CBUQ",
+    page_title="Gestão de Usinagem - JASFALTO",
     page_icon="🏭",
     layout="wide"
 )
+
+# ==================== LOGOMARCA ====================
+def carregar_logo():
+    """Carrega a logomarca da empresa"""
+    try:
+        # Tentar carregar do arquivo local
+        with open("Logo Jasfalto.jpeg", "rb") as img_file:
+            logo_bytes = img_file.read()
+            logo_base64 = base64.b64encode(logo_bytes).decode()
+            return f"data:image/jpeg;base64,{logo_base64}"
+    except:
+        # Se não encontrar, retorna None
+        return None
+
+# ==================== FUNÇÃO PARA GERAR PDF ====================
+def gerar_pdf_html(df, data_inicio, data_fim):
+    """Gera HTML para converter em PDF"""
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Relatório de Programações</title>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                margin: 40px;
+            }}
+            h1 {{
+                color: #333;
+                text-align: center;
+            }}
+            .header {{
+                text-align: center;
+                margin-bottom: 30px;
+            }}
+            .periodo {{
+                text-align: center;
+                color: #666;
+                margin-bottom: 20px;
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 20px;
+            }}
+            th {{
+                background-color: #4CAF50;
+                color: white;
+                padding: 12px;
+                text-align: left;
+                border: 1px solid #ddd;
+            }}
+            td {{
+                padding: 10px;
+                border: 1px solid #ddd;
+                text-align: left;
+            }}
+            tr:nth-child(even) {{
+                background-color: #f2f2f2;
+            }}
+            .footer {{
+                text-align: center;
+                margin-top: 30px;
+                font-size: 12px;
+                color: #666;
+            }}
+        </style>
+    </html>
+    <body>
+        <div class="header">
+            <h1>JASFALTO - Relatório de Programações</h1>
+        </div>
+        <div class="periodo">
+            <strong>Período:</strong> {data_inicio} a {data_fim}
+        </div>
+        <div class="periodo">
+            <strong>Data de emissão:</strong> {datetime.now().strftime('%d/%m/%Y %H:%M')}
+        </div>
+        {df.to_html(index=False)}
+        <div class="footer">
+            <p>Relatório gerado automaticamente pelo Sistema de Gestão de Usinagem JASFALTO</p>
+        </div>
+    </body>
+    </html>
+    """
+    return html
 
 # ==================== CONEXÃO COM GOOGLE SHEETS ====================
 
@@ -21,7 +110,7 @@ def conectar_google_sheets():
     try:
         if 'google' not in st.secrets:
             st.error("Configure as secrets do Google Sheets no Streamlit Cloud")
-            return None, None
+            return None, None, None
         
         scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
         creds = ServiceAccountCredentials.from_json_keyfile_dict(
@@ -38,7 +127,6 @@ def conectar_google_sheets():
             worksheet_usuarios = spreadsheet.worksheet("usuarios")
         except gspread.exceptions.WorksheetNotFound:
             worksheet_usuarios = spreadsheet.add_worksheet(title="usuarios", rows="100", cols="20")
-            # Adicionar cabeçalhos
             cabecalhos = ['username', 'password_hash', 'nome', 'email', 'telefone', 'cargo', 'tipo', 'data_cadastro']
             worksheet_usuarios.insert_row(cabecalhos, 1)
         
@@ -47,9 +135,8 @@ def conectar_google_sheets():
             worksheet_programacoes = spreadsheet.worksheet("programacoes")
         except gspread.exceptions.WorksheetNotFound:
             worksheet_programacoes = spreadsheet.add_worksheet(title="programacoes", rows="100", cols="20")
-            # Adicionar cabeçalhos
             cabecalhos = ['id', 'username', 'cliente', 'cliente_outros', 'data', 'produto', 'toneladas', 
-                         'quant_caminhoes', 'placas', 'transportador', 'status', 'data_solicitacao', 'observacoes']
+                         'quant_caminhoes', 'placas', 'transportador', 'usina', 'status', 'data_solicitacao', 'observacoes']
             worksheet_programacoes.insert_row(cabecalhos, 1)
         
         return spreadsheet, worksheet_usuarios, worksheet_programacoes
@@ -65,26 +152,23 @@ def carregar_usuarios():
             dados = worksheet.get_all_records()
             if dados:
                 df = pd.DataFrame(dados)
-                # Verificar se as colunas existem
                 colunas_necessarias = ['username', 'password_hash', 'nome', 'email', 'telefone', 'cargo', 'tipo', 'data_cadastro']
                 for col in colunas_necessarias:
                     if col not in df.columns:
                         df[col] = ''
                 return df
             else:
-                # Retornar DataFrame vazio com as colunas corretas
                 return pd.DataFrame(columns=['username', 'password_hash', 'nome', 'email', 'telefone', 'cargo', 'tipo', 'data_cadastro'])
         return pd.DataFrame(columns=['username', 'password_hash', 'nome', 'email', 'telefone', 'cargo', 'tipo', 'data_cadastro'])
     except Exception as e:
         st.error(f"Erro ao carregar usuários: {e}")
-        return pd.DataFrame(columns=['username', 'password_hash', 'nome', 'email', 'telefone', 'cargo', 'tipo', 'data_cadastro'])
+        return pd.DataFrame()
 
 def salvar_usuario(username, password_hash, nome, email, telefone, cargo, tipo):
     """Salva novo usuário no Google Sheets"""
     try:
         spreadsheet, worksheet, _ = conectar_google_sheets()
         if worksheet:
-            # Verificar se usuário já existe
             dados = worksheet.get_all_records()
             for row in dados:
                 if row.get('username') == username:
@@ -106,7 +190,6 @@ def carregar_programacoes():
             dados = worksheet.get_all_records()
             if dados:
                 df = pd.DataFrame(dados)
-                # Converter datas
                 if 'data' in df.columns:
                     df['data'] = pd.to_datetime(df['data']).dt.date
                 if 'data_solicitacao' in df.columns:
@@ -114,7 +197,7 @@ def carregar_programacoes():
                 return df
         return pd.DataFrame(columns=[
             'id', 'username', 'cliente', 'cliente_outros', 'data', 'produto', 'toneladas', 
-            'quant_caminhoes', 'placas', 'transportador', 'status', 'data_solicitacao', 'observacoes'
+            'quant_caminhoes', 'placas', 'transportador', 'usina', 'status', 'data_solicitacao', 'observacoes'
         ])
     except Exception as e:
         st.error(f"Erro ao carregar programações: {e}")
@@ -136,6 +219,7 @@ def salvar_programacao(programacao):
                 programacao['quant_caminhoes'],
                 programacao['placas'],
                 programacao['transportador'],
+                programacao['usina'],
                 programacao['status'],
                 programacao['data_solicitacao'].isoformat(),
                 programacao['observacoes']
@@ -164,7 +248,7 @@ def atualizar_status_programacao(id_programacao, novo_status):
         return False
 
 def adicionar_programacao(username, cliente, cliente_outros, data, produto, toneladas, 
-                         quant_caminhoes, placas, transportador, observacoes):
+                         quant_caminhoes, placas, transportador, usina, observacoes):
     """Adiciona nova programação"""
     df = carregar_programacoes()
     
@@ -185,6 +269,7 @@ def adicionar_programacao(username, cliente, cliente_outros, data, produto, tone
         'quant_caminhoes': quant_caminhoes,
         'placas': placas,
         'transportador': transportador,
+        'usina': usina,
         'status': 'Pendente',
         'data_solicitacao': datetime.now(),
         'observacoes': observacoes
@@ -199,14 +284,12 @@ def autenticar_usuario(username, password):
     df_usuarios = carregar_usuarios()
     
     if df_usuarios.empty:
-        # Criar usuário admin padrão se não houver nenhum usuário
         admin_hash = hashlib.sha256("admin123".encode()).hexdigest()
         salvar_usuario('admin', admin_hash, 'Administrador', 'admin@asfalto.com', '', 'Administrador', 'admin')
         df_usuarios = carregar_usuarios()
     
     password_hash = hashlib.sha256(password.encode()).hexdigest()
     
-    # Verificar se a coluna username existe
     if 'username' not in df_usuarios.columns:
         st.error("Erro na estrutura da planilha. Contate o administrador.")
         return None
@@ -225,12 +308,10 @@ def cadastrar_novo_usuario(username, password, nome, email, telefone, cargo, tip
     """Cadastra novo usuário"""
     df_usuarios = carregar_usuarios()
     
-    # Verificar se a coluna username existe
     if 'username' not in df_usuarios.columns:
         st.error("Erro na estrutura da planilha. Contate o administrador.")
         return False
     
-    # Verificar se usuário já existe
     if username in df_usuarios['username'].values:
         return False
     
@@ -325,6 +406,12 @@ def pagina_cliente(usuario):
                 placeholder="Digite o nome da transportadora"
             )
             
+            # Nova opção: Usina - Localidade
+            usina = st.selectbox(
+                "Usina - Localidade *",
+                ["Jasfalto - Uberaba/MG", "Jasfalto - Araguari/MG"]
+            )
+            
             observacoes = st.text_area("Observações (opcional)", height=100)
         
         submitted = st.form_submit_button("📊 Enviar Programação", use_container_width=True)
@@ -359,6 +446,7 @@ def pagina_cliente(usuario):
                     quant_caminhoes,
                     placas_str,
                     transportador,
+                    usina,
                     observacoes
                 )
                 if prog_id:
@@ -379,15 +467,13 @@ def pagina_cliente(usuario):
                 colors = {
                     'Pendente': '🟡',
                     'Confirmada': '🟢',
-                    'Em Produção': '🔵',
-                    'Entregue': '✅',
                     'Cancelada': '❌'
                 }
                 return f"{colors.get(val, '⚪')} {val}"
             
-            display_df = minhas_progs[['id', 'data', 'produto', 'toneladas', 'quant_caminhoes', 'placas', 'transportador', 'status']].copy()
+            display_df = minhas_progs[['id', 'data', 'produto', 'toneladas', 'quant_caminhoes', 'placas', 'transportador', 'usina', 'status']].copy()
             display_df['status'] = display_df['status'].apply(cor_status)
-            display_df.columns = ['ID', 'Data', 'Produto', 'Toneladas', 'Qtde Caminhões', 'Placas', 'Transportador', 'Status']
+            display_df.columns = ['ID', 'Data', 'Produto', 'Toneladas', 'Qtde Caminhões', 'Placas', 'Transportador', 'Usina', 'Status']
             
             st.dataframe(display_df, use_container_width=True, hide_index=True)
         else:
@@ -410,35 +496,99 @@ def pagina_admin(usuario):
         df_prog = carregar_programacoes()
         
         if not df_prog.empty:
+            # Filtros do Dashboard
+            st.markdown("#### Filtros")
+            col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+            
+            with col_f1:
+                data_inicio = st.date_input("Data Início", value=date.today())
+            with col_f2:
+                data_fim = st.date_input("Data Fim", value=date.today())
+            with col_f3:
+                usina_filtro = st.selectbox(
+                    "Usina",
+                    ["Todas", "Jasfalto - Uberaba/MG", "Jasfalto - Araguari/MG"]
+                )
+            with col_f4:
+                status_filtro = st.multiselect(
+                    "Status",
+                    options=['Pendente', 'Confirmada', 'Cancelada'],
+                    default=['Pendente', 'Confirmada']
+                )
+            
+            # Aplicar filtros
+            df_filtrado = df_prog[(df_prog['data'] >= data_inicio) & (df_prog['data'] <= data_fim)]
+            
+            if usina_filtro != "Todas":
+                df_filtrado = df_filtrado[df_filtrado['usina'] == usina_filtro]
+            
+            if status_filtro:
+                df_filtrado = df_filtrado[df_filtrado['status'].isin(status_filtro)]
+            
+            # Botão para gerar PDF
+            if st.button("📄 Gerar Relatório PDF", use_container_width=True):
+                if not df_filtrado.empty:
+                    # Preparar dados para o PDF
+                    df_pdf = df_filtrado[['id', 'cliente', 'data', 'produto', 'toneladas', 
+                                          'quant_caminhoes', 'transportador', 'usina', 'status']].copy()
+                    df_pdf.columns = ['ID', 'Cliente', 'Data', 'Produto', 'Toneladas', 
+                                      'Qtde Caminhões', 'Transportador', 'Usina', 'Status']
+                    
+                    html = gerar_pdf_html(df_pdf, data_inicio.strftime('%d/%m/%Y'), data_fim.strftime('%d/%m/%Y'))
+                    
+                    # Converter para bytes
+                    pdf_bytes = html.encode()
+                    
+                    st.download_button(
+                        label="📥 Baixar PDF",
+                        data=pdf_bytes,
+                        file_name=f"relatorio_programacoes_{data_inicio}_{data_fim}.html",
+                        mime="text/html",
+                        use_container_width=True
+                    )
+            
+            st.markdown("---")
+            
+            # Métricas
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                total_progs = len(df_prog[df_prog['data'] >= date.today()])
-                st.metric("Programações Futuras", total_progs)
+                total_progs = len(df_filtrado)
+                st.metric("Total de Programações", total_progs)
             
             with col2:
-                total_ton = df_prog[df_prog['data'] >= date.today()]['toneladas'].sum()
-                st.metric("Toneladas Agendadas", f"{total_ton:,.0f} t")
+                total_ton = df_filtrado['toneladas'].sum()
+                st.metric("Toneladas Totais", f"{total_ton:,.0f} t")
             
             with col3:
-                pendentes = len(df_prog[df_prog['status'] == 'Pendente'])
+                pendentes = len(df_filtrado[df_filtrado['status'] == 'Pendente'])
                 st.metric("Pendentes", pendentes)
             
             with col4:
-                total_caminhoes = df_prog[df_prog['data'] >= date.today()]['quant_caminhoes'].sum()
+                total_caminhoes = df_filtrado['quant_caminhoes'].sum()
                 st.metric("Total de Caminhões", f"{total_caminhoes:,.0f}")
             
-            st.markdown("#### Programações por Dia")
-            prog_por_dia = df_prog[df_prog['data'] >= date.today()].groupby('data').size().reset_index(name='quantidade')
-            if not prog_por_dia.empty:
-                fig = px.bar(prog_por_dia, x='data', y='quantidade', title="Quantidade de Programações por Dia")
-                st.plotly_chart(fig, use_container_width=True)
+            # Gráficos
+            col_g1, col_g2 = st.columns(2)
             
-            st.markdown("#### Toneladas por Produto")
-            ton_por_produto = df_prog[df_prog['data'] >= date.today()].groupby('produto')['toneladas'].sum().reset_index()
-            if not ton_por_produto.empty:
-                fig2 = px.pie(ton_por_produto, values='toneladas', names='produto', title="Distribuição por Produto")
-                st.plotly_chart(fig2, use_container_width=True)
+            with col_g1:
+                st.markdown("#### Programações por Dia")
+                prog_por_dia = df_filtrado.groupby('data').size().reset_index(name='quantidade')
+                if not prog_por_dia.empty:
+                    fig = px.bar(prog_por_dia, x='data', y='quantidade', title="Quantidade de Programações por Dia")
+                    st.plotly_chart(fig, use_container_width=True)
+            
+            with col_g2:
+                st.markdown("#### Toneladas por Produto")
+                ton_por_produto = df_filtrado.groupby('produto')['toneladas'].sum().reset_index()
+                if not ton_por_produto.empty:
+                    fig2 = px.pie(ton_por_produto, values='toneladas', names='produto', title="Distribuição por Produto")
+                    st.plotly_chart(fig2, use_container_width=True)
+            
+            # Tabela de dados
+            st.markdown("#### Dados Filtrados")
+            st.dataframe(df_filtrado[['id', 'cliente', 'data', 'produto', 'toneladas', 'usina', 'status']], 
+                        use_container_width=True, hide_index=True)
         else:
             st.info("Nenhuma programação cadastrada ainda.")
     
@@ -448,21 +598,30 @@ def pagina_admin(usuario):
         df_prog = carregar_programacoes()
         
         if not df_prog.empty:
-            col_f1, col_f2 = st.columns(2)
+            # Filtros
+            col_f1, col_f2, col_f3, col_f4 = st.columns(4)
             with col_f1:
                 filtro_status = st.multiselect(
                     "Filtrar por Status",
-                    options=['Pendente', 'Confirmada', 'Em Produção', 'Entregue', 'Cancelada'],
+                    options=['Pendente', 'Confirmada', 'Cancelada'],
                     default=['Pendente', 'Confirmada']
                 )
             with col_f2:
                 filtro_data = st.date_input("Filtrar por Data", value=None)
+            with col_f3:
+                filtro_usina = st.selectbox(
+                    "Filtrar por Usina",
+                    ["Todas", "Jasfalto - Uberaba/MG", "Jasfalto - Araguari/MG"]
+                )
             
+            # Aplicar filtros
             df_filtrado = df_prog.copy()
             if filtro_status:
                 df_filtrado = df_filtrado[df_filtrado['status'].isin(filtro_status)]
             if filtro_data:
                 df_filtrado = df_filtrado[df_filtrado['data'] == filtro_data]
+            if filtro_usina != "Todas":
+                df_filtrado = df_filtrado[df_filtrado['usina'] == filtro_usina]
             
             st.markdown("#### Programações")
             
@@ -475,11 +634,12 @@ def pagina_admin(usuario):
                         st.write(f"**Quantidade Caminhões:** {row['quant_caminhoes']}")
                         st.write(f"**Placas:** {row['placas'] if pd.notna(row['placas']) else 'Não informado'}")
                         st.write(f"**Transportador:** {row['transportador'] if pd.notna(row['transportador']) else 'Não informado'}")
+                        st.write(f"**Usina:** {row['usina'] if pd.notna(row['usina']) else 'Não informado'}")
                     with col_b:
                         novo_status = st.selectbox(
                             "Status",
-                            options=['Pendente', 'Confirmada', 'Em Produção', 'Entregue', 'Cancelada'],
-                            index=['Pendente', 'Confirmada', 'Em Produção', 'Entregue', 'Cancelada'].index(row['status']),
+                            options=['Pendente', 'Confirmada', 'Cancelada'],
+                            index=['Pendente', 'Confirmada', 'Cancelada'].index(row['status']) if row['status'] in ['Pendente', 'Confirmada', 'Cancelada'] else 0,
                             key=f"status_{row['id']}"
                         )
                         if novo_status != row['status']:
@@ -530,17 +690,27 @@ def pagina_admin(usuario):
         st.markdown("### Configurações")
         st.info("✅ Dados salvos permanentemente no Google Sheets. Não há risco de perda de dados.")
         st.info("📋 As programações são salvas em tempo real e podem ser consultadas a qualquer momento.")
+        st.info("🏭 Usinas disponíveis: Jasfalto - Uberaba/MG e Jasfalto - Araguari/MG")
 
 # ==================== LOGIN E MAIN ====================
 
 def main():
     """Função principal"""
     
+    # Carregar logo
+    logo = carregar_logo()
+    
     if 'autenticado' not in st.session_state:
         st.session_state.autenticado = False
     
     if not st.session_state.autenticado:
-        st.title("🏭 Sistema de Gestão de Usinagem - CBUQ")
+        # Exibir logo na página de login
+        if logo:
+            col_logo1, col_logo2, col_logo3 = st.columns([1, 2, 1])
+            with col_logo2:
+                st.image(logo, use_container_width=True)
+        
+        st.title("🏭 Sistema de Gestão de Usinagem - JASFALTO")
         st.markdown("### Acesso ao Sistema")
         
         tab_login, tab_cadastro = st.tabs(["🔐 Login", "📝 Cadastrar-se"])
@@ -592,6 +762,11 @@ def main():
     
     else:
         with st.sidebar:
+            # Exibir logo na sidebar
+            if logo:
+                st.image(logo, use_container_width=True)
+                st.markdown("---")
+            
             st.markdown(f"### 👤 {st.session_state.usuario['nome']}")
             if st.session_state.usuario.get('cargo'):
                 st.markdown(f"*{st.session_state.usuario['cargo']}*")
