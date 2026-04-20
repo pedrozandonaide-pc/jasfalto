@@ -6,8 +6,8 @@ import hashlib
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
-from io import BytesIO
 import base64
+import io
 
 # Configuração da página
 st.set_page_config(
@@ -28,6 +28,66 @@ def carregar_logo():
         return None
 
 # ==================== FUNÇÃO PARA GERAR PDF COM GRÁFICO ====================
+def gerar_grafico_toneladas_por_data_produto(df):
+    """Gera gráfico de barras empilhadas por data e produto com cores personalizadas"""
+    
+    # Definir um mapa de cores fixo para cada produto
+    cores_produtos = {
+        "Faixa B": "#1f77b4",      # Azul
+        "Faixa C": "#ff7f0e",      # Laranja
+        "Faixa D": "#2ca02c",      # Verde
+        "Faixa D Aditivado": "#d62728",  # Vermelho
+        "EGL 16-19": "#9467bd",    # Roxo
+        "Gap-Graded": "#8c564b",   # Marrom
+        "PMQ": "#e377c2",          # Rosa
+        "Emulsão RR-1C": "#7f7f7f", # Cinza
+        "CM-IMP": "#bcbd22"        # Verde-oliva
+    }
+    
+    # Agrupar os dados
+    dados_grafico = df.groupby(['data', 'produto'])['toneladas'].sum().reset_index()
+    
+    # Criar o gráfico com cores personalizadas
+    fig = px.bar(
+        dados_grafico,
+        x='data',
+        y='toneladas',
+        color='produto',
+        title="Somatório de Toneladas por Dia e Produto",
+        labels={'data': 'Data', 'toneladas': 'Toneladas', 'produto': 'Produto'},
+        text='toneladas',
+        barmode='stack',
+        color_discrete_map=cores_produtos
+    )
+    
+    fig.update_traces(
+        texttemplate='%{text:.1f}t', 
+        textposition='inside',
+        textfont=dict(size=11, color='white')
+    )
+    
+    fig.update_layout(
+        xaxis_title="Data",
+        yaxis_title="Toneladas",
+        xaxis={'tickformat': '%d/%m/%Y', 'tickangle': -45},
+        yaxis={'gridcolor': '#e0e0e0'},
+        height=500,
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=0.01,
+            bgcolor='rgba(255, 255, 255, 0.8)',
+            bordercolor='#ccc',
+            borderwidth=1
+        ),
+        font=dict(family="Arial, sans-serif", size=12)
+    )
+    
+    return fig
+
 def gerar_pdf_html(df_detalhado, df_resumo, fig_html, data_inicio, data_fim):
     """Gera HTML para converter em PDF com detalhamento por caminhão e gráfico"""
     html = f"""
@@ -40,14 +100,22 @@ def gerar_pdf_html(df_detalhado, df_resumo, fig_html, data_inicio, data_fim):
             body {{
                 font-family: Arial, sans-serif;
                 margin: 40px;
+                color: #333;
             }}
             h1 {{
-                color: #333;
+                color: #2c3e50;
                 text-align: center;
+                border-bottom: 2px solid #4CAF50;
+                padding-bottom: 10px;
             }}
             h2 {{
-                color: #555;
+                color: #2c3e50;
                 margin-top: 30px;
+                border-left: 4px solid #4CAF50;
+                padding-left: 15px;
+            }}
+            h3 {{
+                color: #2c3e50;
             }}
             .header {{
                 text-align: center;
@@ -56,37 +124,40 @@ def gerar_pdf_html(df_detalhado, df_resumo, fig_html, data_inicio, data_fim):
             .periodo {{
                 text-align: center;
                 color: #666;
-                margin-bottom: 20px;
+                margin-bottom: 10px;
             }}
             .resumo {{
-                background-color: #f0f0f0;
+                background-color: #f8f9fa;
                 padding: 15px;
-                border-radius: 5px;
+                border-radius: 8px;
                 margin-bottom: 30px;
+                border: 1px solid #dee2e6;
             }}
             .resumo h3 {{
                 margin-top: 0;
-                color: #333;
+                color: #2c3e50;
             }}
             .grafico {{
                 margin: 30px 0;
                 text-align: center;
+                page-break-inside: avoid;
             }}
             table {{
                 width: 100%;
                 border-collapse: collapse;
                 margin-top: 20px;
                 margin-bottom: 30px;
+                font-size: 12px;
             }}
             th {{
                 background-color: #4CAF50;
                 color: white;
-                padding: 12px;
+                padding: 10px;
                 text-align: left;
                 border: 1px solid #ddd;
             }}
             td {{
-                padding: 10px;
+                padding: 8px;
                 border: 1px solid #ddd;
                 text-align: left;
             }}
@@ -96,11 +167,10 @@ def gerar_pdf_html(df_detalhado, df_resumo, fig_html, data_inicio, data_fim):
             .footer {{
                 text-align: center;
                 margin-top: 30px;
-                font-size: 12px;
+                font-size: 11px;
                 color: #666;
-                position: fixed;
-                bottom: 0;
-                width: 100%;
+                border-top: 1px solid #dee2e6;
+                padding-top: 15px;
             }}
             .page-break {{
                 page-break-before: always;
@@ -115,7 +185,7 @@ def gerar_pdf_html(df_detalhado, df_resumo, fig_html, data_inicio, data_fim):
             <strong>Período:</strong> {data_inicio} a {data_fim}
         </div>
         <div class="periodo">
-            <strong>Data de emissão:</strong> {datetime.now().strftime('%d/%m/%Y %H:%M')}
+            <strong>Data de emissão:</strong> {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
         </div>
         
         <div class="resumo">
@@ -134,6 +204,7 @@ def gerar_pdf_html(df_detalhado, df_resumo, fig_html, data_inicio, data_fim):
         
         <div class="footer">
             <p>Relatório gerado automaticamente pelo Sistema de Gestão de Usinagem JASFALTO</p>
+            <p>Sistema desenvolvido para gestão de programações de usinagem</p>
         </div>
     </body>
     </html>
@@ -387,7 +458,6 @@ def autenticar_usuario(username, password):
     
     usuario = df_usuarios[df_usuarios['username'] == username]
     if not usuario.empty and usuario.iloc[0]['password_hash'] == password_hash:
-        # Determinar o tipo de usuário corretamente
         tipo_usuario = usuario.iloc[0]['tipo'] if 'tipo' in usuario.columns else 'cliente'
         
         # Se for uberaba ou araguari, garantir que o tipo seja 'admin_usina'
@@ -418,6 +488,31 @@ def cadastrar_novo_usuario(username, password, nome, email, telefone, cargo, tip
     if salvar_usuario(username, password_hash, nome, email, telefone, cargo, tipo):
         return True
     return False
+
+def resetar_senha_usuario(username, nova_senha):
+    """Reseta a senha de um usuário"""
+    try:
+        spreadsheet, worksheet, _ = conectar_google_sheets()
+        if worksheet:
+            dados = worksheet.get_all_records()
+            
+            # Encontrar o usuário
+            for idx, row in enumerate(dados, start=2):
+                if row.get('username') == username:
+                    # Gerar novo hash da senha
+                    nova_senha_hash = hashlib.sha256(nova_senha.encode()).hexdigest()
+                    
+                    # Encontrar a coluna password_hash
+                    colunas = list(row.keys())
+                    coluna_senha = colunas.index('password_hash') + 1
+                    
+                    # Atualizar a senha
+                    worksheet.update_cell(idx, coluna_senha, nova_senha_hash)
+                    return True
+        return False
+    except Exception as e:
+        st.error(f"Erro ao resetar senha: {e}")
+        return False
 
 # ==================== INTERFACE DO CLIENTE ====================
 
@@ -580,35 +675,6 @@ def pagina_cliente(usuario):
 
 # ==================== INTERFACE DO ADMIN ====================
 
-def gerar_grafico_toneladas_por_data_produto(df):
-    """Gera gráfico de barras empilhadas por data e produto"""
-    dados_grafico = df.groupby(['data', 'produto'])['toneladas'].sum().reset_index()
-    
-    fig = px.bar(
-        dados_grafico,
-        x='data',
-        y='toneladas',
-        color='produto',
-        title="Somatório de Toneladas por Dia e Produto",
-        labels={'data': 'Data', 'toneladas': 'Toneladas', 'produto': 'Produto'},
-        text='toneladas',
-        barmode='stack'
-    )
-    fig.update_traces(texttemplate='%{text:.1f}t', textposition='inside')
-    fig.update_layout(
-        xaxis_title="Data",
-        yaxis_title="Toneladas",
-        xaxis={'tickformat': '%d/%m/%Y'},
-        height=500,
-        legend=dict(
-            yanchor="top",
-            y=0.99,
-            xanchor="left",
-            x=0.01
-        )
-    )
-    return fig
-
 def pagina_admin(usuario):
     """Página administrativa para gerenciar programações"""
     
@@ -688,7 +754,7 @@ def pagina_admin(usuario):
                         resumo.columns = ['Cliente', 'Total Toneladas', 'Total de Viagens']
                         
                         fig = gerar_grafico_toneladas_por_data_produto(df_filtrado)
-                        fig_html = fig.to_html(full_html=False)
+                        fig_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
                         
                         html = gerar_pdf_html(df_pdf_detalhado, resumo, fig_html, data_inicio.strftime('%d/%m/%Y'), data_fim.strftime('%d/%m/%Y'))
                         
@@ -803,16 +869,88 @@ def pagina_admin(usuario):
         
         if usuario['tipo'] == 'admin':
             df_usuarios = carregar_usuarios()
+            
             if not df_usuarios.empty and 'tipo' in df_usuarios.columns:
+                # Clientes comuns
                 clientes = df_usuarios[df_usuarios['tipo'] == 'cliente']
                 
+                # Administradores de usina
+                admins_usina = df_usuarios[df_usuarios['tipo'] == 'admin_usina']
+                
+                # Admin master
+                admin_master = df_usuarios[df_usuarios['tipo'] == 'admin']
+                
+                # Exibir clientes
                 if not clientes.empty:
+                    st.markdown("#### 👥 Clientes")
                     st.dataframe(
                         clientes[['username', 'nome', 'email', 'telefone', 'cargo', 'data_cadastro']],
                         use_container_width=True,
                         hide_index=True
                     )
+                
+                # Exibir administradores de usina
+                if not admins_usina.empty:
+                    st.markdown("#### 🔐 Administradores de Usina")
+                    st.dataframe(
+                        admins_usina[['username', 'nome', 'email', 'telefone', 'cargo', 'data_cadastro']],
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                
+                st.markdown("---")
+                
+                # Ferramenta de Reset de Senha
+                st.markdown("### 🔑 Resetar Senha de Usuário")
+                st.warning("⚠️ Esta ação irá alterar a senha do usuário imediatamente.")
+                
+                col_r1, col_r2 = st.columns(2)
+                
+                with col_r1:
+                    usuarios_lista = df_usuarios[df_usuarios['username'] != 'admin']['username'].tolist()
+                    
+                    if usuarios_lista:
+                        usuario_reset = st.selectbox(
+                            "Selecione o usuário",
+                            options=usuarios_lista,
+                            key="select_usuario_reset"
+                        )
+                    else:
+                        st.info("Nenhum usuário cadastrado para resetar senha.")
+                        usuario_reset = None
+                
+                with col_r2:
+                    nova_senha = st.text_input(
+                        "Nova senha",
+                        type="password",
+                        placeholder="Digite a nova senha",
+                        key="nova_senha_reset"
+                    )
+                    confirmar_senha = st.text_input(
+                        "Confirmar nova senha",
+                        type="password",
+                        placeholder="Confirme a nova senha",
+                        key="confirmar_senha_reset"
+                    )
+                
+                if st.button("🔄 Resetar Senha", use_container_width=True, key="btn_reset_senha"):
+                    if usuario_reset and nova_senha:
+                        if nova_senha == confirmar_senha:
+                            if resetar_senha_usuario(usuario_reset, nova_senha):
+                                st.success(f"✅ Senha do usuário **{usuario_reset}** resetada com sucesso!")
+                                st.info(f"Nova senha: `{nova_senha}`")
+                                st.balloons()
+                                st.rerun()
+                            else:
+                                st.error("Erro ao resetar a senha. Tente novamente.")
+                        else:
+                            st.error("❌ As senhas não conferem!")
+                    else:
+                        st.error("❌ Selecione um usuário e digite a nova senha!")
             
+            st.markdown("---")
+            
+            # Cadastrar novo cliente
             with st.expander("➕ Cadastrar Novo Cliente"):
                 with st.form("form_novo_cliente"):
                     col_a, col_b = st.columns(2)
@@ -822,14 +960,14 @@ def pagina_admin(usuario):
                         novo_email = st.text_input("E-mail *")
                         novo_cargo = st.text_input("Função/Cargo *")
                     with col_b:
-                        nova_senha = st.text_input("Senha *", type="password")
+                        nova_senha_cliente = st.text_input("Senha *", type="password")
                         novo_telefone = st.text_input("Telefone (WhatsApp)")
                     
                     cadastrar = st.form_submit_button("Cadastrar Cliente")
                     
                     if cadastrar:
-                        if all([novo_username, nova_senha, novo_nome, novo_email, novo_cargo]):
-                            if cadastrar_novo_usuario(novo_username, nova_senha, novo_nome, novo_email, novo_telefone, novo_cargo):
+                        if all([novo_username, nova_senha_cliente, novo_nome, novo_email, novo_cargo]):
+                            if cadastrar_novo_usuario(novo_username, nova_senha_cliente, novo_nome, novo_email, novo_telefone, novo_cargo):
                                 st.success(f"Cliente {novo_nome} cadastrado com sucesso!")
                                 st.rerun()
                             else:
@@ -837,7 +975,7 @@ def pagina_admin(usuario):
                         else:
                             st.error("Preencha todos os campos obrigatórios!")
         else:
-            st.info("👑 Apenas o Administrador Master pode gerenciar clientes.")
+            st.info("👑 Apenas o Administrador Master pode gerenciar clientes e resetar senhas.")
     
     with tab4:
         st.markdown("### Configurações")
