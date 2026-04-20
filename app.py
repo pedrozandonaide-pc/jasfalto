@@ -27,9 +27,9 @@ def carregar_logo():
     except:
         return None
 
-# ==================== FUNÇÃO PARA GERAR PDF ====================
-def gerar_pdf_html(df_detalhado, df_resumo, data_inicio, data_fim):
-    """Gera HTML para converter em PDF com detalhamento por caminhão"""
+# ==================== FUNÇÃO PARA GERAR PDF COM GRÁFICO ====================
+def gerar_pdf_html(df_detalhado, df_resumo, fig_html, data_inicio, data_fim):
+    """Gera HTML para converter em PDF com detalhamento por caminhão e gráfico"""
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -67,6 +67,10 @@ def gerar_pdf_html(df_detalhado, df_resumo, data_inicio, data_fim):
             .resumo h3 {{
                 margin-top: 0;
                 color: #333;
+            }}
+            .grafico {{
+                margin: 30px 0;
+                text-align: center;
             }}
             table {{
                 width: 100%;
@@ -117,6 +121,11 @@ def gerar_pdf_html(df_detalhado, df_resumo, data_inicio, data_fim):
         <div class="resumo">
             <h3>📊 RESUMO GERAL</h3>
             {df_resumo.to_html(index=False)}
+        </div>
+        
+        <div class="grafico">
+            <h3>📈 TONELADAS POR DATA E PRODUTO</h3>
+            {fig_html}
         </div>
         
         <h2>📋 DETALHAMENTO POR CAMINHÃO</h2>
@@ -206,7 +215,22 @@ def carregar_usuarios():
                         df[col] = ''
                 return df
             else:
-                return pd.DataFrame(columns=['username', 'password_hash', 'nome', 'email', 'telefone', 'cargo', 'tipo', 'data_cadastro'])
+                # Criar usuários padrão: admin, uberaba, araguari
+                df = pd.DataFrame(columns=['username', 'password_hash', 'nome', 'email', 'telefone', 'cargo', 'tipo', 'data_cadastro'])
+                
+                # Admin
+                admin_hash = hashlib.sha256("admin123".encode()).hexdigest()
+                df.loc[0] = ['admin', admin_hash, 'Administrador Master', 'admin@jasfalto.com', '', 'Master', 'admin', datetime.now().isoformat()]
+                
+                # Usuário Uberaba
+                uberaba_hash = hashlib.sha256("uberaba123".encode()).hexdigest()
+                df.loc[1] = ['uberaba', uberaba_hash, 'Administrador Uberaba', 'uberaba@jasfalto.com', '', 'Administrador', 'admin_usina', datetime.now().isoformat()]
+                
+                # Usuário Araguari
+                araguari_hash = hashlib.sha256("araguari123".encode()).hexdigest()
+                df.loc[2] = ['araguari', araguari_hash, 'Administrador Araguari', 'araguari@jasfalto.com', '', 'Administrador', 'admin_usina', datetime.now().isoformat()]
+                
+                return df
         return pd.DataFrame(columns=['username', 'password_hash', 'nome', 'email', 'telefone', 'cargo', 'tipo', 'data_cadastro'])
     except Exception as e:
         st.error(f"Erro ao carregar usuários: {e}")
@@ -332,9 +356,7 @@ def autenticar_usuario(username, password):
     df_usuarios = carregar_usuarios()
     
     if df_usuarios.empty:
-        admin_hash = hashlib.sha256("admin123".encode()).hexdigest()
-        salvar_usuario('admin', admin_hash, 'Administrador', 'admin@asfalto.com', '', 'Administrador', 'admin')
-        df_usuarios = carregar_usuarios()
+        return None
     
     password_hash = hashlib.sha256(password.encode()).hexdigest()
     
@@ -407,6 +429,7 @@ def pagina_cliente(usuario):
                 opcoes_clientes
             )
             
+            # Campo cliente_outros aparece automaticamente quando selecionado "OUTROS"
             cliente_outros = ""
             if cliente_selecionado == "OUTROS":
                 cliente_outros = st.text_input("Digite o nome do cliente *")
@@ -518,9 +541,10 @@ def pagina_cliente(usuario):
                 }
                 return f"{colors.get(val, '⚪')} {val}"
             
-            display_df = minhas_progs[['id', 'data', 'produto', 'toneladas', 'quant_caminhoes', 'placas', 'transportador', 'usina', 'status']].copy()
+            # Adicionar coluna Cliente na visualização
+            display_df = minhas_progs[['id', 'data', 'cliente', 'produto', 'toneladas', 'quant_caminhoes', 'placas', 'transportador', 'usina', 'status']].copy()
             display_df['status'] = display_df['status'].apply(cor_status)
-            display_df.columns = ['ID', 'Data', 'Produto', 'Toneladas', 'Qtde Caminhões', 'Placas', 'Transportador', 'Usina', 'Status']
+            display_df.columns = ['ID', 'Data', 'Cliente', 'Produto', 'Toneladas', 'Qtde Caminhões', 'Placas', 'Transportador', 'Usina', 'Status']
             
             st.dataframe(display_df, use_container_width=True, hide_index=True)
         else:
@@ -535,6 +559,13 @@ def pagina_admin(usuario):
     
     st.title(f"⚙️ Painel Administrativo - {usuario['nome']}")
     
+    # Se for admin de usina, filtrar apenas programações da sua usina
+    if usuario['tipo'] == 'admin_usina':
+        usina_permitida = "Jasfalto - Uberaba/MG" if usuario['username'] == 'uberaba' else "Jasfalto - Araguari/MG"
+        st.info(f"🔒 Você está visualizando apenas programações da usina: **{usina_permitida}**")
+    else:
+        usina_permitida = None
+    
     tab1, tab2, tab3, tab4 = st.tabs(["📊 Dashboard", "📋 Programações", "👥 Clientes", "⚙️ Configurações"])
     
     with tab1:
@@ -543,6 +574,10 @@ def pagina_admin(usuario):
         df_prog = carregar_programacoes()
         
         if not df_prog.empty:
+            # Filtrar por usina se for admin_usina
+            if usina_permitida:
+                df_prog = df_prog[df_prog['usina'] == usina_permitida]
+            
             # Filtros do Dashboard
             st.markdown("#### Filtros")
             col_f1, col_f2, col_f3, col_f4 = st.columns(4)
@@ -552,10 +587,14 @@ def pagina_admin(usuario):
             with col_f2:
                 data_fim = st.date_input("Data Fim", value=date.today())
             with col_f3:
-                usina_filtro = st.selectbox(
-                    "Usina",
-                    ["Todas", "Jasfalto - Uberaba/MG", "Jasfalto - Araguari/MG"]
-                )
+                if usina_permitida:
+                    usina_filtro = usina_permitida
+                    st.markdown(f"**Usina:** {usina_filtro}")
+                else:
+                    usina_filtro = st.selectbox(
+                        "Usina",
+                        ["Todas", "Jasfalto - Uberaba/MG", "Jasfalto - Araguari/MG"]
+                    )
             with col_f4:
                 status_filtro = st.multiselect(
                     "Status",
@@ -566,7 +605,7 @@ def pagina_admin(usuario):
             # Aplicar filtros
             df_filtrado = df_prog[(df_prog['data'] >= data_inicio) & (df_prog['data'] <= data_fim)]
             
-            if usina_filtro != "Todas":
+            if not usina_permitida and usina_filtro != "Todas":
                 df_filtrado = df_filtrado[df_filtrado['usina'] == usina_filtro]
             
             if status_filtro:
@@ -590,7 +629,11 @@ def pagina_admin(usuario):
                         }).reset_index()
                         resumo.columns = ['Cliente', 'Total Toneladas', 'Total de Viagens']
                         
-                        html = gerar_pdf_html(df_pdf_detalhado, resumo, data_inicio.strftime('%d/%m/%Y'), data_fim.strftime('%d/%m/%Y'))
+                        # Gerar gráfico para o PDF
+                        fig = gerar_grafico_toneladas_por_data_produto(df_filtrado)
+                        fig_html = fig.to_html(full_html=False)
+                        
+                        html = gerar_pdf_html(df_pdf_detalhado, resumo, fig_html, data_inicio.strftime('%d/%m/%Y'), data_fim.strftime('%d/%m/%Y'))
                         
                         st.download_button(
                             label="📥 Baixar PDF",
@@ -606,29 +649,11 @@ def pagina_admin(usuario):
             
             st.markdown("---")
             
-            # Gráfico melhorado: Toneladas por Data
-            st.markdown("#### Toneladas por Data")
+            # Gráfico: Toneladas por Data e Produto
+            st.markdown("#### Toneladas por Data e Produto")
             
-            # Agrupar por data e somar toneladas
-            toneladas_por_data = df_filtrado.groupby('data')['toneladas'].sum().reset_index()
-            toneladas_por_data.columns = ['Data', 'Toneladas']
-            
-            if not toneladas_por_data.empty:
-                fig = px.bar(
-                    toneladas_por_data, 
-                    x='Data', 
-                    y='Toneladas',
-                    title="Somatório de Toneladas por Dia",
-                    labels={'Data': 'Data', 'Toneladas': 'Toneladas'},
-                    text='Toneladas'
-                )
-                fig.update_traces(texttemplate='%{text:.1f}t', textposition='outside')
-                fig.update_layout(
-                    xaxis_title="Data",
-                    yaxis_title="Toneladas",
-                    xaxis={'tickformat': '%d/%m/%Y'},
-                    height=500
-                )
+            if not df_filtrado.empty:
+                fig = gerar_grafico_toneladas_por_data_produto(df_filtrado)
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("Sem dados para exibir no gráfico")
@@ -672,6 +697,10 @@ def pagina_admin(usuario):
         df_prog = carregar_programacoes()
         
         if not df_prog.empty:
+            # Filtrar por usina se for admin_usina
+            if usina_permitida:
+                df_prog = df_prog[df_prog['usina'] == usina_permitida]
+            
             # Filtros
             col_f1, col_f2, col_f3, col_f4 = st.columns(4)
             with col_f1:
@@ -683,10 +712,13 @@ def pagina_admin(usuario):
             with col_f2:
                 filtro_data = st.date_input("Filtrar por Data", value=None)
             with col_f3:
-                filtro_usina = st.selectbox(
-                    "Filtrar por Usina",
-                    ["Todas", "Jasfalto - Uberaba/MG", "Jasfalto - Araguari/MG"]
-                )
+                if not usina_permitida:
+                    filtro_usina = st.selectbox(
+                        "Filtrar por Usina",
+                        ["Todas", "Jasfalto - Uberaba/MG", "Jasfalto - Araguari/MG"]
+                    )
+                else:
+                    filtro_usina = usina_permitida
             
             # Aplicar filtros
             df_filtrado = df_prog.copy()
@@ -694,7 +726,7 @@ def pagina_admin(usuario):
                 df_filtrado = df_filtrado[df_filtrado['status'].isin(filtro_status)]
             if filtro_data:
                 df_filtrado = df_filtrado[df_filtrado['data'] == filtro_data]
-            if filtro_usina != "Todas":
+            if not usina_permitida and filtro_usina != "Todas":
                 df_filtrado = df_filtrado[df_filtrado['usina'] == filtro_usina]
             
             st.markdown("#### Programações")
@@ -725,46 +757,90 @@ def pagina_admin(usuario):
     with tab3:
         st.markdown("### Gerenciar Clientes")
         
-        df_usuarios = carregar_usuarios()
-        if not df_usuarios.empty and 'tipo' in df_usuarios.columns:
-            clientes = df_usuarios[df_usuarios['tipo'] == 'cliente']
+        # Apenas admin master pode gerenciar clientes
+        if usuario['tipo'] == 'admin':
+            df_usuarios = carregar_usuarios()
+            if not df_usuarios.empty and 'tipo' in df_usuarios.columns:
+                clientes = df_usuarios[df_usuarios['tipo'] == 'cliente']
+                
+                if not clientes.empty:
+                    st.dataframe(
+                        clientes[['username', 'nome', 'email', 'telefone', 'cargo', 'data_cadastro']],
+                        use_container_width=True,
+                        hide_index=True
+                    )
             
-            if not clientes.empty:
-                st.dataframe(
-                    clientes[['username', 'nome', 'email', 'telefone', 'cargo', 'data_cadastro']],
-                    use_container_width=True,
-                    hide_index=True
-                )
-        
-        with st.expander("➕ Cadastrar Novo Cliente"):
-            with st.form("form_novo_cliente"):
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    novo_username = st.text_input("Usuário (login) *")
-                    novo_nome = st.text_input("Nome Completo *")
-                    novo_email = st.text_input("E-mail *")
-                    novo_cargo = st.text_input("Função/Cargo *")
-                with col_b:
-                    nova_senha = st.text_input("Senha *", type="password")
-                    novo_telefone = st.text_input("Telefone (WhatsApp)")
-                
-                cadastrar = st.form_submit_button("Cadastrar Cliente")
-                
-                if cadastrar:
-                    if all([novo_username, nova_senha, novo_nome, novo_email, novo_cargo]):
-                        if cadastrar_novo_usuario(novo_username, nova_senha, novo_nome, novo_email, novo_telefone, novo_cargo):
-                            st.success(f"Cliente {novo_nome} cadastrado com sucesso!")
-                            st.rerun()
+            with st.expander("➕ Cadastrar Novo Cliente"):
+                with st.form("form_novo_cliente"):
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        novo_username = st.text_input("Usuário (login) *")
+                        novo_nome = st.text_input("Nome Completo *")
+                        novo_email = st.text_input("E-mail *")
+                        novo_cargo = st.text_input("Função/Cargo *")
+                    with col_b:
+                        nova_senha = st.text_input("Senha *", type="password")
+                        novo_telefone = st.text_input("Telefone (WhatsApp)")
+                    
+                    cadastrar = st.form_submit_button("Cadastrar Cliente")
+                    
+                    if cadastrar:
+                        if all([novo_username, nova_senha, novo_nome, novo_email, novo_cargo]):
+                            if cadastrar_novo_usuario(novo_username, nova_senha, novo_nome, novo_email, novo_telefone, novo_cargo):
+                                st.success(f"Cliente {novo_nome} cadastrado com sucesso!")
+                                st.rerun()
+                            else:
+                                st.error("Usuário já existe!")
                         else:
-                            st.error("Usuário já existe!")
-                    else:
-                        st.error("Preencha todos os campos obrigatórios!")
+                            st.error("Preencha todos os campos obrigatórios!")
+        else:
+            st.info("👑 Apenas o Administrador Master pode gerenciar clientes.")
     
     with tab4:
         st.markdown("### Configurações")
         st.info("✅ Dados salvos permanentemente no Google Sheets. Não há risco de perda de dados.")
         st.info("📋 As programações são salvas em tempo real e podem ser consultadas a qualquer momento.")
         st.info("🏭 Usinas disponíveis: Jasfalto - Uberaba/MG e Jasfalto - Araguari/MG")
+        
+        if usuario['tipo'] == 'admin':
+            st.markdown("---")
+            st.markdown("### 🔐 Credenciais dos Administradores de Usina")
+            st.markdown("""
+            | Usuário | Senha | Usina |
+            |---------|-------|-------|
+            | `uberaba` | `uberaba123` | Jasfalto - Uberaba/MG |
+            | `araguari` | `araguari123` | Jasfalto - Araguari/MG |
+            """)
+
+def gerar_grafico_toneladas_por_data_produto(df):
+    """Gera gráfico de barras empilhadas por data e produto"""
+    # Agrupar por data e produto
+    dados_grafico = df.groupby(['data', 'produto'])['toneladas'].sum().reset_index()
+    
+    fig = px.bar(
+        dados_grafico,
+        x='data',
+        y='toneladas',
+        color='produto',
+        title="Somatório de Toneladas por Dia e Produto",
+        labels={'data': 'Data', 'toneladas': 'Toneladas', 'produto': 'Produto'},
+        text='toneladas',
+        barmode='stack'
+    )
+    fig.update_traces(texttemplate='%{text:.1f}t', textposition='inside')
+    fig.update_layout(
+        xaxis_title="Data",
+        yaxis_title="Toneladas",
+        xaxis={'tickformat': '%d/%m/%Y'},
+        height=500,
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=0.01
+        )
+    )
+    return fig
 
 # ==================== LOGIN E MAIN ====================
 
@@ -777,10 +853,11 @@ def main():
         st.session_state.autenticado = False
     
     if not st.session_state.autenticado:
+        # Exibir logo menor na página de login
         if logo:
-            col_logo1, col_logo2, col_logo3 = st.columns([1, 2, 1])
+            col_logo1, col_logo2, col_logo3 = st.columns([1, 1, 1])
             with col_logo2:
-                st.image(logo, use_container_width=True)
+                st.image(logo, width=200)  # Tamanho reduzido para 200px
         
         st.title("🏭 Sistema de Gestão de Usinagem - JASFALTO")
         st.markdown("### Acesso ao Sistema")
@@ -835,7 +912,7 @@ def main():
     else:
         with st.sidebar:
             if logo:
-                st.image(logo, use_container_width=True)
+                st.image(logo, width=150)  # Logo menor na sidebar
                 st.markdown("---")
             
             st.markdown(f"### 👤 {st.session_state.usuario['nome']}")
@@ -849,7 +926,7 @@ def main():
                 st.session_state.usuario = None
                 st.rerun()
         
-        if st.session_state.usuario['tipo'] == 'admin':
+        if st.session_state.usuario['tipo'] in ['admin', 'admin_usina']:
             pagina_admin(st.session_state.usuario)
         else:
             pagina_cliente(st.session_state.usuario)
