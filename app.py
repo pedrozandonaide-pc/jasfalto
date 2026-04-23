@@ -17,6 +17,18 @@ st.set_page_config(
     layout="wide"
 )
 
+# ==================== FUNÇÃO PARA OBTER HORÁRIO BRASÍLIA ====================
+
+def obter_horario_brasilia():
+    """Retorna a data e hora atual no fuso horário de Brasília (GMT-3)"""
+    fuso_brasilia = pytz.timezone('America/Sao_Paulo')
+    agora_brasilia = datetime.now(fuso_brasilia)
+    return agora_brasilia
+
+def obter_data_hoje_brasilia():
+    """Retorna a data atual no fuso horário de Brasília"""
+    return obter_horario_brasilia().date()
+
 # ==================== LOGOMARCA ====================
 def carregar_logo():
     """Carrega a logomarca da empresa"""
@@ -28,14 +40,6 @@ def carregar_logo():
     except:
         return None
 
-# ==================== FUNÇÃO PARA OBTER HORÁRIO BRASÍLIA ====================
-
-def obter_horario_brasilia():
-    """Retorna a data e hora atual no fuso horário de Brasília (GMT-3)"""
-    fuso_brasilia = pytz.timezone('America/Sao_Paulo')
-    agora_brasilia = datetime.now(fuso_brasilia)
-    return agora_brasilia
-
 # ==================== FUNÇÕES DE VALIDAÇÃO DE HORÁRIO ====================
 
 def verificar_prazo_programacao(data_programacao):
@@ -46,8 +50,8 @@ def verificar_prazo_programacao(data_programacao):
     - Amanhã (D+1): Permitido apenas se ainda não passou das 16h de hoje
     - D+2 em diante: Sempre permitido
     """
-    agora = obter_horario_brasilia()  # Usando horário de Brasília
-    hoje = date.today()
+    agora = obter_horario_brasilia()
+    hoje = obter_data_hoje_brasilia()
     
     # Se a programação é para hoje -> NUNCA permitido
     if data_programacao == hoje:
@@ -82,8 +86,8 @@ def pode_editar_programacao(data_programacao):
     - Programações para amanhã (D+1): Podem ser editadas apenas se hoje antes das 16h
     - Programações para D+2 em diante: Sempre podem ser editadas
     """
-    agora = obter_horario_brasilia()  # Usando horário de Brasília
-    hoje = date.today()
+    agora = obter_horario_brasilia()
+    hoje = obter_data_hoje_brasilia()
     
     # Programação para hoje -> Não pode editar
     if data_programacao == hoje:
@@ -101,30 +105,28 @@ def pode_editar_programacao(data_programacao):
         return True, "✅ Você pode editar esta programação (sem limite de horário)."
     
     return False, "Prazo para edição expirado."
-    
+
 # ==================== FUNÇÃO PARA GERAR PDF COM GRÁFICO ====================
 def gerar_grafico_toneladas_por_data_produto(df):
     """Gera gráfico de barras empilhadas por data e produto com cores personalizadas e textos legíveis"""
     
     # Definir um mapa de cores fixo para cada produto
     cores_produtos = {
-        "Faixa B": "#1f77b4",      # Azul
-        "Faixa C": "#ff7f0e",      # Laranja
-        "Faixa D": "#2ca02c",      # Verde
-        "Faixa D Aditivado": "#d62728",  # Vermelho
-        "Faixa D Aditivado (saco 25kg)": "#ff9896",  # Vermelho claro
-        "EGL 16-19": "#9467bd",    # Roxo
-        "Gap-Graded": "#8c564b",   # Marrom
-        "PMQ": "#e377c2",          # Rosa
-        "Emulsão RR-1C": "#7f7f7f", # Cinza
-        "CM-IMP": "#bcbd22",        # Verde-oliva
-        "Rejeito de Asfalto": "#c5b0d5"  # Roxo claro
+        "Faixa B": "#1f77b4",
+        "Faixa C": "#ff7f0e",
+        "Faixa D": "#2ca02c",
+        "Faixa D Aditivado": "#d62728",
+        "Faixa D Aditivado (saco 25kg)": "#ff9896",
+        "EGL 16-19": "#9467bd",
+        "Gap-Graded": "#8c564b",
+        "PMQ": "#e377c2",
+        "Emulsão RR-1C": "#7f7f7f",
+        "CM-IMP": "#bcbd22",
+        "Rejeito de Asfalto": "#c5b0d5"
     }
     
-    # Agrupar os dados
     dados_grafico = df.groupby(['data', 'produto'])['toneladas'].sum().reset_index()
     
-    # Criar o gráfico com cores personalizadas
     fig = px.bar(
         dados_grafico,
         x='data',
@@ -137,7 +139,6 @@ def gerar_grafico_toneladas_por_data_produto(df):
         color_discrete_map=cores_produtos
     )
     
-    # Corrigir a cor do texto dentro das barras
     fig.update_traces(
         texttemplate='%{text:.1f}t',
         textposition='inside',
@@ -181,7 +182,7 @@ def gerar_pdf_html(df_detalhado, df_resumo, fig_html, data_inicio, data_fim):
     html = f"""
     <!DOCTYPE html>
     <html>
-   <head>
+    <head>
         <meta charset="UTF-8">
         <title>Relatório de Programações - JASFALTO</title>
         <style>
@@ -260,9 +261,6 @@ def gerar_pdf_html(df_detalhado, df_resumo, fig_html, data_inicio, data_fim):
                 border-top: 1px solid #dee2e6;
                 padding-top: 15px;
             }}
-            .page-break {{
-                page-break-before: always;
-            }}
         </style>
     </head>
     <body>
@@ -292,7 +290,6 @@ def gerar_pdf_html(df_detalhado, df_resumo, fig_html, data_inicio, data_fim):
         
         <div class="footer">
             <p>Relatório gerado automaticamente pelo Sistema de Gestão de Usinagem JASFALTO</p>
-            <p>Sistema desenvolvido para gestão de programações de usinagem</p>
         </div>
     </body>
     </html>
@@ -373,7 +370,6 @@ def carregar_usuarios():
                     if col not in df.columns:
                         df[col] = ''
                 
-                # Verificar se os usuários uberaba e araguari existem
                 usuarios_existentes = df['username'].tolist() if 'username' in df.columns else []
                 
                 if 'uberaba' not in usuarios_existentes:
@@ -386,26 +382,20 @@ def carregar_usuarios():
                     nova_linha = ['araguari', araguari_hash, 'Administrador Araguari', 'araguari@jasfalto.com', '', 'Administrador Usina Araguari', 'admin_usina', datetime.now().isoformat()]
                     worksheet.append_row(nova_linha)
                 
-                # Recarregar os dados após adicionar
                 dados = worksheet.get_all_records()
                 df = pd.DataFrame(dados)
-                
                 return df
             else:
-                # Criar usuários padrão se a planilha estiver vazia
                 df = pd.DataFrame(columns=['username', 'password_hash', 'nome', 'email', 'telefone', 'cargo', 'tipo', 'data_cadastro'])
                 
-                # Admin Master
                 admin_hash = hashlib.sha256("admin123".encode()).hexdigest()
                 admin_row = ['admin', admin_hash, 'Administrador Master', 'admin@jasfalto.com', '', 'Master', 'admin', datetime.now().isoformat()]
                 worksheet.append_row(admin_row)
                 
-                # Usuário Uberaba
                 uberaba_hash = hashlib.sha256("uberaba123".encode()).hexdigest()
                 uberaba_row = ['uberaba', uberaba_hash, 'Administrador Uberaba', 'uberaba@jasfalto.com', '', 'Administrador Usina Uberaba', 'admin_usina', datetime.now().isoformat()]
                 worksheet.append_row(uberaba_row)
                 
-                # Usuário Araguari
                 araguari_hash = hashlib.sha256("araguari123".encode()).hexdigest()
                 araguari_row = ['araguari', araguari_hash, 'Administrador Araguari', 'araguari@jasfalto.com', '', 'Administrador Usina Araguari', 'admin_usina', datetime.now().isoformat()]
                 worksheet.append_row(araguari_row)
@@ -509,10 +499,8 @@ def atualizar_programacao(id_programacao, cliente, cliente_outros, data, produto
             
             for idx, row in enumerate(dados, start=2):
                 if str(row.get('id', '')) == str(id_programacao):
-                    # Encontrar índices das colunas
                     colunas = list(row.keys())
                     
-                    # Atualizar cada coluna
                     worksheet.update_cell(idx, colunas.index('cliente') + 1, cliente if cliente != "OUTROS" else cliente_outros)
                     worksheet.update_cell(idx, colunas.index('cliente_outros') + 1, cliente_outros if cliente == "OUTROS" else "")
                     worksheet.update_cell(idx, colunas.index('data') + 1, data.isoformat())
@@ -583,7 +571,6 @@ def autenticar_usuario(username, password):
     if not usuario.empty and usuario.iloc[0]['password_hash'] == password_hash:
         tipo_usuario = usuario.iloc[0]['tipo'] if 'tipo' in usuario.columns else 'cliente'
         
-        # Se for uberaba ou araguari, garantir que o tipo seja 'admin_usina'
         if username == 'uberaba' or username == 'araguari':
             tipo_usuario = 'admin_usina'
         
@@ -619,17 +606,11 @@ def resetar_senha_usuario(username, nova_senha):
         if worksheet:
             dados = worksheet.get_all_records()
             
-            # Encontrar o usuário
             for idx, row in enumerate(dados, start=2):
                 if row.get('username') == username:
-                    # Gerar novo hash da senha
                     nova_senha_hash = hashlib.sha256(nova_senha.encode()).hexdigest()
-                    
-                    # Encontrar a coluna password_hash
                     colunas = list(row.keys())
                     coluna_senha = colunas.index('password_hash') + 1
-                    
-                    # Atualizar a senha
                     worksheet.update_cell(idx, coluna_senha, nova_senha_hash)
                     return True
         return False
@@ -647,9 +628,8 @@ def pagina_cliente(usuario):
         st.caption(f"Cargo: {usuario['cargo']}")
     
     # Aviso de horário limite
-    agora = datetime.now()
     agora_brasilia = obter_horario_brasilia()
-st.info(f"⏰ **Horário limite para programação:** Até às 16h do dia anterior à data desejada. Atualmente são {agora_brasilia.strftime('%H:%M')} (horário de Brasília)")
+    st.info(f"⏰ **Horário limite para programação:** Até às 16h do dia anterior para programar para o dia seguinte. Atualmente são {agora_brasilia.strftime('%H:%M')} (horário de Brasília)")
     
     # Abas para Nova Programação e Minhas Programações
     aba1, aba2 = st.tabs(["📝 Nova Programação", "📋 Minhas Programações"])
@@ -665,8 +645,8 @@ st.info(f"⏰ **Horário limite para programação:** Até às 16h do dia anteri
             with col1:
                 data_programacao = st.date_input(
                     "Data da Usinagem *",
-                    min_value=date.today(),
-                    value=date.today()
+                    min_value=obter_data_hoje_brasilia() + timedelta(days=1),
+                    value=obter_data_hoje_brasilia() + timedelta(days=1)
                 )
                 
                 # Verificar prazo
@@ -788,14 +768,13 @@ st.info(f"⏰ **Horário limite para programação:** Até às 16h do dia anteri
     
     with aba2:
         st.markdown("### 📋 Minhas Programações")
-        st.markdown("Aqui você pode visualizar, editar ou cancelar suas programações.")
+        st.markdown("Aqui você pode visualizar, editar ou cancelar suas programações (até às 16h do dia anterior).")
         
         df_prog = carregar_programacoes()
         if not df_prog.empty and 'username' in df_prog.columns:
             minhas_progs = df_prog[df_prog['username'] == usuario['username']].sort_values('data', ascending=True)
             
             if not minhas_progs.empty:
-                # Filtrar apenas programações Pendentes ou Confirmadas (não canceladas/entregues)
                 programacoes_ativas = minhas_progs[minhas_progs['status'].isin(['Pendente', 'Confirmada'])]
                 
                 if not programacoes_ativas.empty:
@@ -835,7 +814,6 @@ st.info(f"⏰ **Horário limite para programação:** Até às 16h do dia anteri
                 else:
                     st.info("Você não possui programações ativas no momento.")
                 
-                # Exibir programações já realizadas/canceladas
                 programacoes_finalizadas = minhas_progs[minhas_progs['status'].isin(['Entregue', 'Cancelada'])]
                 if not programacoes_finalizadas.empty:
                     st.markdown("---")
@@ -854,7 +832,7 @@ st.info(f"⏰ **Horário limite para programação:** Até às 16h do dia anteri
         else:
             st.info("Nenhuma programação encontrada.")
         
-        # Formulário de edição (se houver programação sendo editada)
+        # Formulário de edição
         if 'editando_id' in st.session_state:
             st.markdown("---")
             st.markdown("### ✏️ Editar Programação")
@@ -869,10 +847,9 @@ st.info(f"⏰ **Horário limite para programação:** Até às 16h do dia anteri
                     nova_data = st.date_input(
                         "Nova Data da Usinagem",
                         value=dados_edit['data'],
-                        min_value=date.today()
+                        min_value=obter_data_hoje_brasilia() + timedelta(days=1)
                     )
                     
-                    # Verificar prazo para a nova data
                     prazo_edit_valido, msg_prazo_edit = verificar_prazo_programacao(nova_data)
                     if not prazo_edit_valido:
                         st.error(f"❌ {msg_prazo_edit}")
@@ -974,7 +951,6 @@ def pagina_admin(usuario):
     
     st.title(f"⚙️ Painel Administrativo - {usuario['nome']}")
     
-    # Se for admin de usina, definir qual usina ele pode ver
     if usuario['tipo'] == 'admin_usina':
         if usuario['username'] == 'uberaba':
             usina_permitida = "Jasfalto - Uberaba/MG"
@@ -995,18 +971,16 @@ def pagina_admin(usuario):
         df_prog = carregar_programacoes()
         
         if not df_prog.empty:
-            # Filtrar por usina se for admin_usina
             if usina_permitida:
                 df_prog = df_prog[df_prog['usina'] == usina_permitida]
             
-            # Filtros do Dashboard
             st.markdown("#### Filtros")
             col_f1, col_f2, col_f3, col_f4 = st.columns(4)
             
             with col_f1:
-                data_inicio = st.date_input("Data Início", value=date.today())
+                data_inicio = st.date_input("Data Início", value=obter_data_hoje_brasilia())
             with col_f2:
-                data_fim = st.date_input("Data Fim", value=date.today())
+                data_fim = st.date_input("Data Fim", value=obter_data_hoje_brasilia())
             with col_f3:
                 if usina_permitida:
                     st.markdown(f"**Usina:** {usina_permitida}")
@@ -1023,7 +997,6 @@ def pagina_admin(usuario):
                     default=['Pendente', 'Confirmada']
                 )
             
-            # Aplicar filtros
             df_filtrado = df_prog[(df_prog['data'] >= data_inicio) & (df_prog['data'] <= data_fim)]
             
             if not usina_permitida and usina_filtro != "Todas":
@@ -1032,7 +1005,6 @@ def pagina_admin(usuario):
             if status_filtro:
                 df_filtrado = df_filtrado[df_filtrado['status'].isin(status_filtro)]
             
-            # Botão para gerar PDF
             if st.button("📄 Gerar Relatório PDF", use_container_width=True):
                 if not df_filtrado.empty:
                     df_detalhado = expandir_por_caminhao(df_filtrado)
@@ -1066,7 +1038,6 @@ def pagina_admin(usuario):
             
             st.markdown("---")
             
-            # Gráfico
             st.markdown("#### Toneladas por Data e Produto")
             
             if not df_filtrado.empty:
@@ -1075,7 +1046,6 @@ def pagina_admin(usuario):
             else:
                 st.info("Sem dados para exibir no gráfico")
             
-            # Métricas
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
@@ -1094,14 +1064,12 @@ def pagina_admin(usuario):
                 total_caminhoes = df_filtrado['quant_caminhoes'].sum()
                 st.metric("Total de Viagens", f"{total_caminhoes:,.0f}")
             
-            # Gráfico de toneladas por produto
             st.markdown("#### Toneladas por Produto")
             ton_por_produto = df_filtrado.groupby('produto')['toneladas'].sum().reset_index()
             if not ton_por_produto.empty:
                 fig2 = px.pie(ton_por_produto, values='toneladas', names='produto', title="Distribuição por Produto")
                 st.plotly_chart(fig2, use_container_width=True)
             
-            # Tabela de dados
             st.markdown("#### Dados Filtrados")
             st.dataframe(df_filtrado[['id', 'cliente', 'data', 'produto', 'toneladas', 'quant_caminhoes', 'usina', 'status']], 
                         use_container_width=True, hide_index=True)
@@ -1114,12 +1082,10 @@ def pagina_admin(usuario):
         df_prog = carregar_programacoes()
         
         if not df_prog.empty:
-            # Filtrar por usina se for admin_usina
             if usina_permitida:
                 df_prog = df_prog[df_prog['usina'] == usina_permitida]
             
-            # Filtros
-            col_f1, col_f2, col_f3 = st.columns(3)
+            col_f1, col_f2 = st.columns(2)
             with col_f1:
                 filtro_status = st.multiselect(
                     "Filtrar por Status",
@@ -1128,23 +1094,12 @@ def pagina_admin(usuario):
                 )
             with col_f2:
                 filtro_data = st.date_input("Filtrar por Data", value=None)
-            with col_f3:
-                if not usina_permitida:
-                    filtro_usina = st.selectbox(
-                        "Filtrar por Usina",
-                        ["Todas", "Jasfalto - Uberaba/MG", "Jasfalto - Araguari/MG"]
-                    )
-                else:
-                    filtro_usina = usina_permitida
             
-            # Aplicar filtros
             df_filtrado = df_prog.copy()
             if filtro_status:
                 df_filtrado = df_filtrado[df_filtrado['status'].isin(filtro_status)]
             if filtro_data:
                 df_filtrado = df_filtrado[df_filtrado['data'] == filtro_data]
-            if not usina_permitida and filtro_usina != "Todas":
-                df_filtrado = df_filtrado[df_filtrado['usina'] == filtro_usina]
             
             st.markdown("#### Programações")
             
@@ -1178,13 +1133,9 @@ def pagina_admin(usuario):
             df_usuarios = carregar_usuarios()
             
             if not df_usuarios.empty and 'tipo' in df_usuarios.columns:
-                # Clientes comuns
                 clientes = df_usuarios[df_usuarios['tipo'] == 'cliente']
-                
-                # Administradores de usina
                 admins_usina = df_usuarios[df_usuarios['tipo'] == 'admin_usina']
                 
-                # Exibir clientes
                 if not clientes.empty:
                     st.markdown("#### 👥 Clientes")
                     st.dataframe(
@@ -1193,7 +1144,6 @@ def pagina_admin(usuario):
                         hide_index=True
                     )
                 
-                # Exibir administradores de usina
                 if not admins_usina.empty:
                     st.markdown("#### 🔐 Administradores de Usina")
                     st.dataframe(
@@ -1204,7 +1154,6 @@ def pagina_admin(usuario):
                 
                 st.markdown("---")
                 
-                # Ferramenta de Reset de Senha
                 st.markdown("### 🔑 Resetar Senha de Usuário")
                 st.warning("⚠️ Esta ação irá alterar a senha do usuário imediatamente.")
                 
@@ -1254,7 +1203,6 @@ def pagina_admin(usuario):
             
             st.markdown("---")
             
-            # Cadastrar novo cliente
             with st.expander("➕ Cadastrar Novo Cliente"):
                 with st.form("form_novo_cliente"):
                     col_a, col_b = st.columns(2)
@@ -1286,7 +1234,8 @@ def pagina_admin(usuario):
         st.info("✅ Dados salvos permanentemente no Google Sheets. Não há risco de perda de dados.")
         st.info("📋 As programações são salvas em tempo real e podem ser consultadas a qualquer momento.")
         st.info("🏭 Usinas disponíveis: Jasfalto - Uberaba/MG e Jasfalto - Araguari/MG")
-        st.info("⏰ Horário limite para programação: Até às 16h do dia anterior à data desejada.")
+        st.info("⏰ Horário limite para programação: Até às 16h do dia anterior para programar para o dia seguinte (horário de Brasília).")
+        st.info("❌ Não é permitido programar para o dia atual.")
         
         if usuario['tipo'] == 'admin':
             st.markdown("---")
@@ -1316,7 +1265,6 @@ def main():
         
         st.title("🏭 Sistema de Gestão de Usinagem - JASFALTO")
         
-        # Link para o site
         st.markdown("---")
         col_link1, col_link2, col_link3 = st.columns([1, 2, 1])
         with col_link2:
@@ -1361,7 +1309,6 @@ def main():
                         else:
                             st.error("Usuário ou senha inválidos!")
                 
-                # Opção "Esqueci minha senha"
                 with st.expander("🔑 Esqueci minha senha"):
                     st.markdown("""
                     <div style="text-align: center; padding: 20px; background-color: #f8f9fa; border-radius: 10px;">
@@ -1417,7 +1364,6 @@ def main():
             st.markdown(f"*{st.session_state.usuario['tipo'].upper()}*")
             st.markdown("---")
             
-            # Link do site na sidebar
             st.markdown("""
             <div style="text-align: center;">
                 <a href="https://jasfalto.com.br/" target="_blank" style="text-decoration: none;">
