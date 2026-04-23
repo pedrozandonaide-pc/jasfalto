@@ -569,7 +569,7 @@ def pagina_cliente(usuario):
             
             produto = st.selectbox(
                 "Produto *",
-                ["Faixa B", "Faixa C", "Faixa D", "Faixa D Aditivado", "EGL 16-19", "Gap-Graded", "PMQ", "Emulsão RR-1C", "CM-IMP"]
+                ["Faixa B", "Faixa C", "Faixa D", "Faixa D Aditivado", "Faixa D Aditivado (saco 25kg)", "EGL 16-19", "Gap-Graded", "PMQ", "Emulsão RR-1C", "CM-IMP", "Rejeito de Asfalto"]
             )
             
             toneladas = st.number_input(
