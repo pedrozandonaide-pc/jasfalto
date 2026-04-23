@@ -32,51 +32,67 @@ def carregar_logo():
 def verificar_prazo_programacao(data_programacao):
     """
     Verifica se ainda é possível fazer/editar programação para a data informada
-    Prazo: até 16h do dia anterior à data da programação
+    Regras:
+    - Hoje (D): NUNCA permitido
+    - Amanhã (D+1): Permitido apenas se ainda não passou das 16h de hoje
+    - D+2 em diante: Sempre permitido
     """
     agora = datetime.now()
+    hoje = date.today()
     
-    # Se a programação é para hoje
-    if data_programacao == date.today():
-        # Verifica se ainda não passou das 16h
-        if agora.hour >= 16:
-            return False, "Não é mais possível programar para hoje. O prazo era até às 16h."
-        else:
-            return True, f"Você tem até às 16h de hoje para programar para hoje. Faltam {16 - agora.hour} hora(s)."
+    # Se a programação é para hoje -> NUNCA permitido
+    if data_programacao == hoje:
+        return False, "❌ Não é permitido programar para o dia atual. A programação deve ser feita com pelo menos 1 dia de antecedência."
     
     # Se a programação é para amanhã
-    if data_programacao == date.today() + timedelta(days=1):
+    if data_programacao == hoje + timedelta(days=1):
         # Verifica se ainda não passou das 16h de hoje
-        if agora.hour >= 16:
-            return False, "Não é mais possível programar para amanhã. O prazo era até às 16h de hoje."
+        hora_atual = agora.hour
+        if hora_atual >= 16:
+            return False, f"❌ Prazo para programar para amanhã expirou. O limite era até às 16h de hoje. Atualmente são {agora.strftime('%H:%M')}."
         else:
-            return True, f"Você tem até às 16h de hoje para programar para amanhã. Faltam {16 - agora.hour} hora(s)."
+            horas_restantes = 16 - hora_atual
+            minutos_restantes = 59 - agora.minute
+            return True, f"✅ Você tem até às 16h de hoje para programar para amanhã. Faltam {horas_restantes} hora(s) e {minutos_restantes} minuto(s)."
     
-    # Para datas futuras além de amanhã
-    if data_programacao > date.today() + timedelta(days=1):
-        return True, "Programação para data futura permitida."
+    # Para datas futuras além de amanhã (D+2, D+3, ...) -> Sempre permitido
+    if data_programacao > hoje + timedelta(days=1):
+        return True, "✅ Programação para data futura permitida (sem limite de horário)."
     
     # Para datas passadas
-    if data_programacao < date.today():
-        return False, "Não é possível programar para datas passadas."
+    if data_programacao < hoje:
+        return False, "❌ Não é possível programar para datas passadas."
     
     return True, "Programação permitida."
 
 def pode_editar_programacao(data_programacao):
     """
     Verifica se o usuário ainda pode editar uma programação existente
+    Regras:
+    - Programações para hoje (D): NÃO podem ser editadas
+    - Programações para amanhã (D+1): Podem ser editadas apenas se hoje antes das 16h
+    - Programações para D+2 em diante: Sempre podem ser editadas
     """
     agora = datetime.now()
-    data_limite = data_programacao - timedelta(days=1)
+    hoje = date.today()
     
-    # Se a data limite (véspera) é hoje e ainda não passou das 16h
-    if data_limite == date.today() and agora.hour < 16:
-        return True, f"Você pode editar até às 16h de hoje."
-    elif data_limite > date.today():
-        return True, "Você pode editar esta programação."
-    else:
-        return False, "Prazo para edição expirado. O prazo era até às 16h do dia anterior à programação."
-
+    # Programação para hoje -> Não pode editar
+    if data_programacao == hoje:
+        return False, "❌ Não é possível editar programação para o dia atual."
+    
+    # Programação para amanhã
+    if data_programacao == hoje + timedelta(days=1):
+        if agora.hour >= 16:
+            return False, f"❌ Prazo para editar programação para amanhã expirou. O limite era até às 16h de hoje. Atualmente são {agora.strftime('%H:%M')}."
+        else:
+            return True, f"✅ Você pode editar até às 16h de hoje."
+    
+    # Programação para datas futuras (D+2 ou mais) -> Sempre pode editar
+    if data_programacao > hoje + timedelta(days=1):
+        return True, "✅ Você pode editar esta programação (sem limite de horário)."
+    
+    return False, "Prazo para edição expirado."
+    
 # ==================== FUNÇÃO PARA GERAR PDF COM GRÁFICO ====================
 def gerar_grafico_toneladas_por_data_produto(df):
     """Gera gráfico de barras empilhadas por data e produto com cores personalizadas e textos legíveis"""
