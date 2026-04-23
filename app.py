@@ -8,6 +8,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import json
 import base64
 import io
+import pytz
 
 # Configuração da página
 st.set_page_config(
@@ -27,6 +28,14 @@ def carregar_logo():
     except:
         return None
 
+# ==================== FUNÇÃO PARA OBTER HORÁRIO BRASÍLIA ====================
+
+def obter_horario_brasilia():
+    """Retorna a data e hora atual no fuso horário de Brasília (GMT-3)"""
+    fuso_brasilia = pytz.timezone('America/Sao_Paulo')
+    agora_brasilia = datetime.now(fuso_brasilia)
+    return agora_brasilia
+
 # ==================== FUNÇÕES DE VALIDAÇÃO DE HORÁRIO ====================
 
 def verificar_prazo_programacao(data_programacao):
@@ -37,7 +46,7 @@ def verificar_prazo_programacao(data_programacao):
     - Amanhã (D+1): Permitido apenas se ainda não passou das 16h de hoje
     - D+2 em diante: Sempre permitido
     """
-    agora = datetime.now()
+    agora = obter_horario_brasilia()  # Usando horário de Brasília
     hoje = date.today()
     
     # Se a programação é para hoje -> NUNCA permitido
@@ -49,7 +58,7 @@ def verificar_prazo_programacao(data_programacao):
         # Verifica se ainda não passou das 16h de hoje
         hora_atual = agora.hour
         if hora_atual >= 16:
-            return False, f"❌ Prazo para programar para amanhã expirou. O limite era até às 16h de hoje. Atualmente são {agora.strftime('%H:%M')}."
+            return False, f"❌ Prazo para programar para amanhã expirou. O limite era até às 16h de hoje. Atualmente são {agora.strftime('%H:%M')} (horário de Brasília)."
         else:
             horas_restantes = 16 - hora_atual
             minutos_restantes = 59 - agora.minute
@@ -73,7 +82,7 @@ def pode_editar_programacao(data_programacao):
     - Programações para amanhã (D+1): Podem ser editadas apenas se hoje antes das 16h
     - Programações para D+2 em diante: Sempre podem ser editadas
     """
-    agora = datetime.now()
+    agora = obter_horario_brasilia()  # Usando horário de Brasília
     hoje = date.today()
     
     # Programação para hoje -> Não pode editar
@@ -83,7 +92,7 @@ def pode_editar_programacao(data_programacao):
     # Programação para amanhã
     if data_programacao == hoje + timedelta(days=1):
         if agora.hour >= 16:
-            return False, f"❌ Prazo para editar programação para amanhã expirou. O limite era até às 16h de hoje. Atualmente são {agora.strftime('%H:%M')}."
+            return False, f"❌ Prazo para editar programação para amanhã expirou. O limite era até às 16h de hoje. Atualmente são {agora.strftime('%H:%M')} (horário de Brasília)."
         else:
             return True, f"✅ Você pode editar até às 16h de hoje."
     
@@ -639,7 +648,8 @@ def pagina_cliente(usuario):
     
     # Aviso de horário limite
     agora = datetime.now()
-    st.info(f"⏰ **Horário limite para programação:** Até às 16h do dia anterior à data desejada. Atualmente são {agora.strftime('%H:%M')}")
+    agora_brasilia = obter_horario_brasilia()
+st.info(f"⏰ **Horário limite para programação:** Até às 16h do dia anterior à data desejada. Atualmente são {agora_brasilia.strftime('%H:%M')} (horário de Brasília)")
     
     # Abas para Nova Programação e Minhas Programações
     aba1, aba2 = st.tabs(["📝 Nova Programação", "📋 Minhas Programações"])
