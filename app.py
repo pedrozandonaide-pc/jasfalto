@@ -55,39 +55,38 @@ def obter_data_hoje_brasilia():
 
 def verificar_prazo_programacao(data_programacao):
     """
-    Verifica se ainda é possível fazer/editar programação para a data informada
+    Verifica se ainda é possível fazer programação para a data informada
     Regras:
     - Hoje (D): NUNCA permitido
-    - Amanhã (D+1): Permitido apenas se ainda NÃO passou das 16h de hoje
-    - D+2, D+3, D+4...: SEMPRE permitido (independente do horário)
+    - Amanhã (D+1): Permitido apenas se ainda NÃO passou das 16h de HOJE
+    - Depois de amanhã (D+2 ou mais): SEMPRE permitido (independente do horário)
     """
     agora = obter_horario_brasilia()
     hoje = obter_data_hoje_brasilia()
     
-    # DEBUG: Mostrar horário para diagnóstico
-    st.sidebar.caption(f"🕐 Horário Brasília: {agora.strftime('%d/%m/%Y %H:%M:%S')}")
+    # Calcular diferença em dias
+    dias_diferenca = (data_programacao - hoje).days
     
-    # Se a programação é para hoje -> NUNCA permitido
-    if data_programacao == hoje:
+    # Caso 1: Programação para hoje -> NUNCA permitido
+    if dias_diferenca == 0:
         return False, "❌ Não é permitido programar para o dia atual. A programação deve ser feita com pelo menos 1 dia de antecedência."
     
-    # Se a programação é para amanhã (D+1)
-    if data_programacao == hoje + timedelta(days=1):
-        # Verifica se ainda não passou das 16h de hoje (USANDO HORÁRIO BRASÍLIA)
+    # Caso 2: Programação para amanhã (1 dia de diferença)
+    if dias_diferenca == 1:
         hora_atual = agora.hour
         if hora_atual >= 16:
             return False, f"❌ Prazo para programar para amanhã ({data_programacao.strftime('%d/%m/%Y')}) expirou. O limite era até às 16h de hoje. Atualmente são {agora.strftime('%H:%M')} (horário de Brasília)."
         else:
-            horas_restantes = 16 - hora_atual - 1
+            horas_restantes = 16 - hora_atual
             minutos_restantes = 60 - agora.minute
             return True, f"✅ Você tem até às 16h de hoje para programar para amanhã ({data_programacao.strftime('%d/%m/%Y')}). Faltam {horas_restantes} hora(s) e {minutos_restantes} minuto(s)."
     
-    # Para QUALQUER data futura além de amanhã (D+2, D+3, D+4, ...) -> SEMPRE permitido
-    if data_programacao > hoje + timedelta(days=1):
-        return True, f"✅ Programação para data futura {data_programacao.strftime('%d/%m/%Y')} permitida (sem limite de horário)."
+    # Caso 3: Programação para depois de amanhã (2 ou mais dias de diferença) -> SEMPRE permitido
+    if dias_diferenca >= 2:
+        return True, f"✅ Programação para {data_programacao.strftime('%d/%m/%Y')} permitida (com {dias_diferenca} dias de antecedência, sem limite de horário)."
     
-    # Para datas passadas
-    if data_programacao < hoje:
+    # Caso 4: Datas passadas
+    if dias_diferenca < 0:
         return False, "❌ Não é possível programar para datas passadas."
     
     return True, "Programação permitida."
@@ -98,29 +97,28 @@ def pode_editar_programacao(data_programacao):
     Regras:
     - Programações para hoje (D): NÃO podem ser editadas
     - Programações para amanhã (D+1): Podem ser editadas apenas se hoje antes das 16h
-    - Programações para D+2, D+3, D+4...: SEMPRE podem ser editadas (independente do horário)
+    - Programações para D+2 ou mais: SEMPRE podem ser editadas
     """
     agora = obter_horario_brasilia()
     hoje = obter_data_hoje_brasilia()
     
+    # Calcular diferença em dias
+    dias_diferenca = (data_programacao - hoje).days
+    
     # Programação para hoje -> Não pode editar
-    if data_programacao == hoje:
+    if dias_diferenca == 0:
         return False, "❌ Não é possível editar programação para o dia atual."
     
-    # Programação para amanhã (D+1)
-    if data_programacao == hoje + timedelta(days=1):
+    # Programação para amanhã (1 dia de diferença)
+    if dias_diferenca == 1:
         if agora.hour >= 16:
             return False, f"❌ Prazo para editar programação para amanhã ({data_programacao.strftime('%d/%m/%Y')}) expirou. O limite era até às 16h de hoje. Atualmente são {agora.strftime('%H:%M')} (horário de Brasília)."
         else:
             return True, f"✅ Você pode editar programação para amanhã até às 16h de hoje."
     
-    # Programação para QUALQUER data futura (D+2, D+3, D+4, ...) -> Sempre pode editar
-    if data_programacao > hoje + timedelta(days=1):
+    # Programação para depois de amanhã (2 ou mais dias) -> Sempre pode editar
+    if dias_diferenca >= 2:
         return True, f"✅ Você pode editar esta programação para {data_programacao.strftime('%d/%m/%Y')} (sem limite de horário)."
-    
-    # Programações passadas
-    if data_programacao < hoje:
-        return False, "❌ Não é possível editar programações de datas passadas."
     
     return False, "Prazo para edição expirado."
     
