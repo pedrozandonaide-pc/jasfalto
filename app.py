@@ -47,8 +47,8 @@ def verificar_prazo_programacao(data_programacao):
     Verifica se ainda é possível fazer/editar programação para a data informada
     Regras:
     - Hoje (D): NUNCA permitido
-    - Amanhã (D+1): Permitido apenas se ainda não passou das 16h de hoje
-    - D+2 em diante: Sempre permitido
+    - Amanhã (D+1): Permitido apenas se ainda NÃO passou das 16h de hoje
+    - D+2, D+3, D+4... (qualquer data após amanhã): SEMPRE permitido (independente do horário)
     """
     agora = obter_horario_brasilia()
     hoje = obter_data_hoje_brasilia()
@@ -57,20 +57,20 @@ def verificar_prazo_programacao(data_programacao):
     if data_programacao == hoje:
         return False, "❌ Não é permitido programar para o dia atual. A programação deve ser feita com pelo menos 1 dia de antecedência."
     
-    # Se a programação é para amanhã
+    # Se a programação é para amanhã (D+1)
     if data_programacao == hoje + timedelta(days=1):
         # Verifica se ainda não passou das 16h de hoje
         hora_atual = agora.hour
         if hora_atual >= 16:
-            return False, f"❌ Prazo para programar para amanhã expirou. O limite era até às 16h de hoje. Atualmente são {agora.strftime('%H:%M')} (horário de Brasília)."
+            return False, f"❌ Prazo para programar para amanhã ({data_programacao.strftime('%d/%m/%Y')}) expirou. O limite era até às 16h de hoje. Atualmente são {agora.strftime('%H:%M')} (horário de Brasília)."
         else:
             horas_restantes = 16 - hora_atual
             minutos_restantes = 59 - agora.minute
-            return True, f"✅ Você tem até às 16h de hoje para programar para amanhã. Faltam {horas_restantes} hora(s) e {minutos_restantes} minuto(s)."
+            return True, f"✅ Você tem até às 16h de hoje para programar para amanhã ({data_programacao.strftime('%d/%m/%Y')}). Faltam {horas_restantes} hora(s) e {minutos_restantes} minuto(s)."
     
-    # Para datas futuras além de amanhã (D+2, D+3, ...) -> Sempre permitido
+    # Para QUALQUER data futura além de amanhã (D+2, D+3, D+4, ...) -> SEMPRE permitido
     if data_programacao > hoje + timedelta(days=1):
-        return True, "✅ Programação para data futura permitida (sem limite de horário)."
+        return True, f"✅ Programação para data futura {data_programacao.strftime('%d/%m/%Y')} permitida (sem limite de horário)."
     
     # Para datas passadas
     if data_programacao < hoje:
@@ -84,7 +84,7 @@ def pode_editar_programacao(data_programacao):
     Regras:
     - Programações para hoje (D): NÃO podem ser editadas
     - Programações para amanhã (D+1): Podem ser editadas apenas se hoje antes das 16h
-    - Programações para D+2 em diante: Sempre podem ser editadas
+    - Programações para D+2, D+3, D+4...: SEMPRE podem ser editadas (independente do horário)
     """
     agora = obter_horario_brasilia()
     hoje = obter_data_hoje_brasilia()
@@ -93,16 +93,22 @@ def pode_editar_programacao(data_programacao):
     if data_programacao == hoje:
         return False, "❌ Não é possível editar programação para o dia atual."
     
-    # Programação para amanhã
+    # Programação para amanhã (D+1)
     if data_programacao == hoje + timedelta(days=1):
         if agora.hour >= 16:
-            return False, f"❌ Prazo para editar programação para amanhã expirou. O limite era até às 16h de hoje. Atualmente são {agora.strftime('%H:%M')} (horário de Brasília)."
+            return False, f"❌ Prazo para editar programação para amanhã ({data_programacao.strftime('%d/%m/%Y')}) expirou. O limite era até às 16h de hoje. Atualmente são {agora.strftime('%H:%M')} (horário de Brasília)."
         else:
-            return True, f"✅ Você pode editar até às 16h de hoje."
+            horas_restantes = 16 - agora.hour
+            minutos_restantes = 59 - agora.minute
+            return True, f"✅ Você pode editar programação para amanhã até às 16h de hoje. Faltam {horas_restantes}h{minutos_restantes}min."
     
-    # Programação para datas futuras (D+2 ou mais) -> Sempre pode editar
+    # Programação para QUALQUER data futura (D+2, D+3, D+4, ...) -> Sempre pode editar
     if data_programacao > hoje + timedelta(days=1):
-        return True, "✅ Você pode editar esta programação (sem limite de horário)."
+        return True, f"✅ Você pode editar esta programação para {data_programacao.strftime('%d/%m/%Y')} (sem limite de horário)."
+    
+    # Programações passadas
+    if data_programacao < hoje:
+        return False, "❌ Não é possível editar programações de datas passadas."
     
     return False, "Prazo para edição expirado."
 
@@ -629,7 +635,9 @@ def pagina_cliente(usuario):
     
     # Aviso de horário limite
     agora_brasilia = obter_horario_brasilia()
-    st.info(f"⏰ **Horário limite para programação:** Até às 16h do dia anterior para programar para o dia seguinte. Atualmente são {agora_brasilia.strftime('%H:%M')} (horário de Brasília)")
+    hoje = obter_data_hoje_brasilia()
+    
+    st.info(f"⏰ **Horário limite para programação:** Para amanhã ({ (hoje + timedelta(days=1)).strftime('%d/%m/%Y') }) o prazo é até às 16h de hoje. Para datas posteriores, não há limite de horário. Atualmente são {agora_brasilia.strftime('%H:%M')} (horário de Brasília)")
     
     # Abas para Nova Programação e Minhas Programações
     aba1, aba2 = st.tabs(["📝 Nova Programação", "📋 Minhas Programações"])
@@ -645,8 +653,8 @@ def pagina_cliente(usuario):
             with col1:
                 data_programacao = st.date_input(
                     "Data da Usinagem *",
-                    min_value=obter_data_hoje_brasilia() + timedelta(days=1),
-                    value=obter_data_hoje_brasilia() + timedelta(days=1)
+                    min_value=hoje + timedelta(days=1),
+                    value=hoje + timedelta(days=1)
                 )
                 
                 # Verificar prazo
@@ -768,7 +776,7 @@ def pagina_cliente(usuario):
     
     with aba2:
         st.markdown("### 📋 Minhas Programações")
-        st.markdown("Aqui você pode visualizar, editar ou cancelar suas programações (até às 16h do dia anterior).")
+        st.markdown("Aqui você pode visualizar, editar ou cancelar suas programações.")
         
         df_prog = carregar_programacoes()
         if not df_prog.empty and 'username' in df_prog.columns:
@@ -836,7 +844,7 @@ def pagina_cliente(usuario):
         if 'editando_id' in st.session_state:
             st.markdown("---")
             st.markdown("### ✏️ Editar Programação")
-            st.warning("⚠️ Altere apenas os campos necessários. O prazo para edição é até às 16h do dia anterior à programação.")
+            st.warning("⚠️ Altere apenas os campos necessários.")
             
             dados_edit = st.session_state['editando_dados']
             
@@ -847,7 +855,7 @@ def pagina_cliente(usuario):
                     nova_data = st.date_input(
                         "Nova Data da Usinagem",
                         value=dados_edit['data'],
-                        min_value=obter_data_hoje_brasilia() + timedelta(days=1)
+                        min_value=hoje + timedelta(days=1)
                     )
                     
                     prazo_edit_valido, msg_prazo_edit = verificar_prazo_programacao(nova_data)
@@ -951,6 +959,8 @@ def pagina_admin(usuario):
     
     st.title(f"⚙️ Painel Administrativo - {usuario['nome']}")
     
+    hoje = obter_data_hoje_brasilia()
+    
     if usuario['tipo'] == 'admin_usina':
         if usuario['username'] == 'uberaba':
             usina_permitida = "Jasfalto - Uberaba/MG"
@@ -978,9 +988,9 @@ def pagina_admin(usuario):
             col_f1, col_f2, col_f3, col_f4 = st.columns(4)
             
             with col_f1:
-                data_inicio = st.date_input("Data Início", value=obter_data_hoje_brasilia())
+                data_inicio = st.date_input("Data Início", value=hoje)
             with col_f2:
-                data_fim = st.date_input("Data Fim", value=obter_data_hoje_brasilia())
+                data_fim = st.date_input("Data Fim", value=hoje)
             with col_f3:
                 if usina_permitida:
                     st.markdown(f"**Usina:** {usina_permitida}")
@@ -1234,8 +1244,10 @@ def pagina_admin(usuario):
         st.info("✅ Dados salvos permanentemente no Google Sheets. Não há risco de perda de dados.")
         st.info("📋 As programações são salvas em tempo real e podem ser consultadas a qualquer momento.")
         st.info("🏭 Usinas disponíveis: Jasfalto - Uberaba/MG e Jasfalto - Araguari/MG")
-        st.info("⏰ Horário limite para programação: Até às 16h do dia anterior para programar para o dia seguinte (horário de Brasília).")
-        st.info("❌ Não é permitido programar para o dia atual.")
+        st.info("⏰ **Regras de programação:**")
+        st.info("   - ❌ Não é permitido programar para o dia atual")
+        st.info("   - ✅ Programação para amanhã: permitida apenas até às 16h de hoje")
+        st.info("   - ✅ Programação para depois de amanhã em diante: permitida em qualquer horário")
         
         if usuario['tipo'] == 'admin':
             st.markdown("---")
