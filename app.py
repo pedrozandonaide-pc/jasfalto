@@ -22,12 +22,51 @@ st.set_page_config(
 def obter_horario_brasilia():
     """Retorna a data e hora atual no fuso horário de Brasília (GMT-3)"""
     fuso_brasilia = pytz.timezone('America/Sao_Paulo')
-    agora_brasilia = datetime.now(fuso_brasilia)
+    agora_utc = datetime.now(pytz.UTC)
+    agora_brasilia = agora_utc.astimezone(fuso_brasilia)
     return agora_brasilia
 
 def obter_data_hoje_brasilia():
     """Retorna a data atual no fuso horário de Brasília"""
     return obter_horario_brasilia().date()
+
+# ==================== FUNÇÃO DE VALIDAÇÃO DE PRAZO SIMPLIFICADA ====================
+
+def validar_data_programacao(data_selecionada):
+    """
+    Valida se a data selecionada é permitida para programação
+    Regras:
+    - Hoje: NUNCA permitido
+    - Amanhã: Permitido APENAS se ainda NÃO passou das 16h de HOJE
+    - D+2, D+3, D+4...: SEMPRE permitido
+    """
+    agora = obter_horario_brasilia()
+    hoje = obter_data_hoje_brasilia()
+    
+    diferenca_dias = (data_selecionada - hoje).days
+    
+    # Caso 1: Hoje
+    if diferenca_dias == 0:
+        return False, "❌ Não é permitido programar para o dia de hoje."
+    
+    # Caso 2: Amanhã (1 dia de diferença)
+    if diferenca_dias == 1:
+        hora_atual = agora.hour
+        if hora_atual >= 16:
+            return False, f"❌ Prazo para programar para AMANHÃ expirou. O limite era até às 16h de hoje. Agora são {agora.strftime('%H:%M')} (horário de Brasília)."
+        else:
+            horas_restantes = 16 - hora_atual
+            return True, f"✅ Você pode programar para AMANHÃ (data: {data_selecionada.strftime('%d/%m/%Y')}). Prazo até às 16h de hoje. Faltam {horas_restantes} horas."
+    
+    # Caso 3: Depois de amanhã ou mais (2+ dias de diferença)
+    if diferenca_dias >= 2:
+        return True, f"✅ Programação para {data_selecionada.strftime('%d/%m/%Y')} permitida (com {diferenca_dias} dias de antecedência)."
+    
+    # Caso 4: Data passada
+    if diferenca_dias < 0:
+        return False, "❌ Não é possível programar para datas passadas."
+    
+    return False, "Data inválida"
 
 # ==================== LOGOMARCA ====================
 def carregar_logo():
@@ -40,93 +79,10 @@ def carregar_logo():
     except:
         return None
 
-# ==================== FUNÇÕES DE VALIDAÇÃO DE HORÁRIO (CORRIGIDAS) ====================
-
-def obter_horario_brasilia():
-    """Retorna a data e hora atual no fuso horário de Brasília (GMT-3)"""
-    fuso_brasilia = pytz.timezone('America/Sao_Paulo')
-    agora_utc = datetime.now(pytz.UTC)
-    agora_brasilia = agora_utc.astimezone(fuso_brasilia)
-    return agora_brasilia
-
-def obter_data_hoje_brasilia():
-    """Retorna a data atual no fuso horário de Brasília"""
-    return obter_horario_brasilia().date()
-
-def verificar_prazo_programacao(data_programacao):
-    """
-    Verifica se ainda é possível fazer programação para a data informada
-    Regras:
-    - Hoje (D): NUNCA permitido
-    - Amanhã (D+1): Permitido apenas se ainda NÃO passou das 16h de HOJE
-    - Depois de amanhã (D+2 ou mais): SEMPRE permitido (independente do horário)
-    """
-    agora = obter_horario_brasilia()
-    hoje = obter_data_hoje_brasilia()
-    
-    # Calcular diferença em dias
-    dias_diferenca = (data_programacao - hoje).days
-    
-    # Caso 1: Programação para hoje -> NUNCA permitido
-    if dias_diferenca == 0:
-        return False, "❌ Não é permitido programar para o dia atual. A programação deve ser feita com pelo menos 1 dia de antecedência."
-    
-    # Caso 2: Programação para amanhã (1 dia de diferença)
-    if dias_diferenca == 1:
-        hora_atual = agora.hour
-        if hora_atual >= 16:
-            return False, f"❌ Prazo para programar para amanhã ({data_programacao.strftime('%d/%m/%Y')}) expirou. O limite era até às 16h de hoje. Atualmente são {agora.strftime('%H:%M')} (horário de Brasília)."
-        else:
-            horas_restantes = 16 - hora_atual
-            minutos_restantes = 60 - agora.minute
-            return True, f"✅ Você tem até às 16h de hoje para programar para amanhã ({data_programacao.strftime('%d/%m/%Y')}). Faltam {horas_restantes} hora(s) e {minutos_restantes} minuto(s)."
-    
-    # Caso 3: Programação para depois de amanhã (2 ou mais dias de diferença) -> SEMPRE permitido
-    if dias_diferenca >= 2:
-        return True, f"✅ Programação para {data_programacao.strftime('%d/%m/%Y')} permitida (com {dias_diferenca} dias de antecedência, sem limite de horário)."
-    
-    # Caso 4: Datas passadas
-    if dias_diferenca < 0:
-        return False, "❌ Não é possível programar para datas passadas."
-    
-    return True, "Programação permitida."
-
-def pode_editar_programacao(data_programacao):
-    """
-    Verifica se o usuário ainda pode editar uma programação existente
-    Regras:
-    - Programações para hoje (D): NÃO podem ser editadas
-    - Programações para amanhã (D+1): Podem ser editadas apenas se hoje antes das 16h
-    - Programações para D+2 ou mais: SEMPRE podem ser editadas
-    """
-    agora = obter_horario_brasilia()
-    hoje = obter_data_hoje_brasilia()
-    
-    # Calcular diferença em dias
-    dias_diferenca = (data_programacao - hoje).days
-    
-    # Programação para hoje -> Não pode editar
-    if dias_diferenca == 0:
-        return False, "❌ Não é possível editar programação para o dia atual."
-    
-    # Programação para amanhã (1 dia de diferença)
-    if dias_diferenca == 1:
-        if agora.hour >= 16:
-            return False, f"❌ Prazo para editar programação para amanhã ({data_programacao.strftime('%d/%m/%Y')}) expirou. O limite era até às 16h de hoje. Atualmente são {agora.strftime('%H:%M')} (horário de Brasília)."
-        else:
-            return True, f"✅ Você pode editar programação para amanhã até às 16h de hoje."
-    
-    # Programação para depois de amanhã (2 ou mais dias) -> Sempre pode editar
-    if dias_diferenca >= 2:
-        return True, f"✅ Você pode editar esta programação para {data_programacao.strftime('%d/%m/%Y')} (sem limite de horário)."
-    
-    return False, "Prazo para edição expirado."
-    
 # ==================== FUNÇÃO PARA GERAR PDF COM GRÁFICO ====================
 def gerar_grafico_toneladas_por_data_produto(df):
-    """Gera gráfico de barras empilhadas por data e produto com cores personalizadas e textos legíveis"""
+    """Gera gráfico de barras empilhadas por data e produto com cores personalizadas"""
     
-    # Definir um mapa de cores fixo para cada produto
     cores_produtos = {
         "Faixa B": "#1f77b4",
         "Faixa C": "#ff7f0e",
@@ -164,149 +120,43 @@ def gerar_grafico_toneladas_por_data_produto(df):
     fig.update_layout(
         xaxis_title="Data",
         yaxis_title="Toneladas",
-        xaxis={
-            'tickformat': '%d/%m/%Y',
-            'tickangle': -45,
-            'tickfont': dict(size=12, color='black')
-        },
-        yaxis={
-            'gridcolor': '#e0e0e0',
-            'tickfont': dict(size=12, color='black'),
-            'title_font': dict(size=14, color='black')
-        },
+        xaxis={'tickformat': '%d/%m/%Y', 'tickangle': -45, 'tickfont': dict(size=12, color='black')},
+        yaxis={'gridcolor': '#e0e0e0', 'tickfont': dict(size=12, color='black')},
         height=500,
         plot_bgcolor='white',
         paper_bgcolor='white',
         title_font=dict(size=16, color='black'),
-        legend=dict(
-            yanchor="top",
-            y=0.99,
-            xanchor="left",
-            x=0.01,
-            bgcolor='rgba(255, 255, 255, 0.9)',
-            bordercolor='#ccc',
-            borderwidth=1,
-            font=dict(size=11, color='black')
-        ),
-        font=dict(family="Arial, sans-serif", size=12, color='black')
+        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01, bgcolor='rgba(255,255,255,0.9)')
     )
     
     return fig
 
 def gerar_pdf_html(df_detalhado, df_resumo, fig_html, data_inicio, data_fim):
-    """Gera HTML para converter em PDF com detalhamento por caminhão e gráfico"""
+    """Gera HTML para PDF"""
     html = f"""
     <!DOCTYPE html>
     <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>Relatório de Programações - JASFALTO</title>
-        <style>
-            body {{
-                font-family: Arial, sans-serif;
-                margin: 40px;
-                color: #333;
-            }}
-            h1 {{
-                color: #2c3e50;
-                text-align: center;
-                border-bottom: 2px solid #4CAF50;
-                padding-bottom: 10px;
-            }}
-            h2 {{
-                color: #2c3e50;
-                margin-top: 30px;
-                border-left: 4px solid #4CAF50;
-                padding-left: 15px;
-            }}
-            h3 {{
-                color: #2c3e50;
-            }}
-            .header {{
-                text-align: center;
-                margin-bottom: 30px;
-            }}
-            .periodo {{
-                text-align: center;
-                color: #666;
-                margin-bottom: 10px;
-            }}
-            .resumo {{
-                background-color: #f8f9fa;
-                padding: 15px;
-                border-radius: 8px;
-                margin-bottom: 30px;
-                border: 1px solid #dee2e6;
-            }}
-            .resumo h3 {{
-                margin-top: 0;
-                color: #2c3e50;
-            }}
-            .grafico {{
-                margin: 30px 0;
-                text-align: center;
-                page-break-inside: avoid;
-            }}
-            table {{
-                width: 100%;
-                border-collapse: collapse;
-                margin-top: 20px;
-                margin-bottom: 30px;
-                font-size: 12px;
-            }}
-            th {{
-                background-color: #4CAF50;
-                color: white;
-                padding: 10px;
-                text-align: left;
-                border: 1px solid #ddd;
-            }}
-            td {{
-                padding: 8px;
-                border: 1px solid #ddd;
-                text-align: left;
-            }}
-            tr:nth-child(even) {{
-                background-color: #f2f2f2;
-            }}
-            .footer {{
-                text-align: center;
-                margin-top: 30px;
-                font-size: 11px;
-                color: #666;
-                border-top: 1px solid #dee2e6;
-                padding-top: 15px;
-            }}
-        </style>
+    <head><meta charset="UTF-8"><title>Relatório JASFALTO</title>
+    <style>
+        body {{ font-family: Arial; margin: 40px; }}
+        h1 {{ color: #2c3e50; text-align: center; border-bottom: 2px solid #4CAF50; }}
+        table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+        th {{ background-color: #4CAF50; color: white; padding: 10px; border: 1px solid #ddd; }}
+        td {{ padding: 8px; border: 1px solid #ddd; }}
+        tr:nth-child(even) {{ background-color: #f2f2f2; }}
+        .footer {{ text-align: center; margin-top: 30px; font-size: 11px; color: #666; }}
+    </style>
     </head>
     <body>
-        <div class="header">
-            <h1>JASFALTO - Relatório de Programações</h1>
-        </div>
-        <div class="periodo">
-            <strong>Período:</strong> {data_inicio} a {data_fim}
-        </div>
-        <div class="periodo">
-            <strong>Data de emissão:</strong> {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
-        </div>
-        
-        <div class="resumo">
-            <h3>📊 RESUMO GERAL</h3>
-            {df_resumo.to_html(index=False)}
-        </div>
-        
-        <div class="grafico">
-            <h3>📈 TONELADAS POR DATA E PRODUTO</h3>
-            {fig_html}
-        </div>
-        
-        <h2>📋 DETALHAMENTO POR CAMINHÃO</h2>
-        <p><strong>Total de viagens:</strong> {len(df_detalhado)}</p>
+        <h1>JASFALTO - Relatório de Programações</h1>
+        <p><strong>Período:</strong> {data_inicio} a {data_fim}</p>
+        <div class="grafico">{fig_html}</div>
+        <h2>Resumo Geral</h2>
+        {df_resumo.to_html(index=False)}
+        <h2>Detalhamento por Caminhão</h2>
+        <p>Total de viagens: {len(df_detalhado)}</p>
         {df_detalhado.to_html(index=False)}
-        
-        <div class="footer">
-            <p>Relatório gerado automaticamente pelo Sistema de Gestão de Usinagem JASFALTO</p>
-        </div>
+        <div class="footer">Relatório gerado pelo Sistema JASFALTO</div>
     </body>
     </html>
     """
@@ -315,10 +165,8 @@ def gerar_pdf_html(df_detalhado, df_resumo, fig_html, data_inicio, data_fim):
 def expandir_por_caminhao(df_filtrado):
     """Expande o DataFrame para uma linha por caminhão"""
     registros_expandidos = []
-    
     for idx, row in df_filtrado.iterrows():
         placas = row['placas'].split(', ') if pd.notna(row['placas']) and row['placas'] else []
-        
         if placas:
             for placa in placas:
                 if placa.strip():
@@ -329,119 +177,62 @@ def expandir_por_caminhao(df_filtrado):
             novo_registro = row.copy()
             novo_registro['placa'] = 'Não informado'
             registros_expandidos.append(novo_registro)
-    
-    if registros_expandidos:
-        return pd.DataFrame(registros_expandidos)
-    return pd.DataFrame()
+    return pd.DataFrame(registros_expandidos) if registros_expandidos else pd.DataFrame()
 
 # ==================== CONEXÃO COM GOOGLE SHEETS ====================
 
 def conectar_google_sheets():
-    """Conecta ao Google Sheets e garante que as abas existam"""
+    """Conecta ao Google Sheets"""
     try:
         if 'google' not in st.secrets:
             st.error("Configure as secrets do Google Sheets no Streamlit Cloud")
             return None, None, None
         
         scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(
-            st.secrets["google"], 
-            scope
-        )
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["google"], scope)
         client = gspread.authorize(creds)
-        
         sheet_id = st.secrets["google_sheet_id"]
         spreadsheet = client.open_by_key(sheet_id)
         
         try:
             worksheet_usuarios = spreadsheet.worksheet("usuarios")
-        except gspread.exceptions.WorksheetNotFound:
+        except:
             worksheet_usuarios = spreadsheet.add_worksheet(title="usuarios", rows="100", cols="20")
-            cabecalhos = ['username', 'password_hash', 'nome', 'email', 'telefone', 'cargo', 'tipo', 'data_cadastro']
-            worksheet_usuarios.insert_row(cabecalhos, 1)
+            worksheet_usuarios.insert_row(['username', 'password_hash', 'nome', 'email', 'telefone', 'cargo', 'tipo', 'data_cadastro'], 1)
         
         try:
             worksheet_programacoes = spreadsheet.worksheet("programacoes")
-        except gspread.exceptions.WorksheetNotFound:
+        except:
             worksheet_programacoes = spreadsheet.add_worksheet(title="programacoes", rows="100", cols="20")
-            cabecalhos = ['id', 'username', 'cliente', 'cliente_outros', 'data', 'produto', 'toneladas', 
-                         'quant_caminhoes', 'placas', 'transportador', 'usina', 'status', 'data_solicitacao', 'observacoes']
-            worksheet_programacoes.insert_row(cabecalhos, 1)
+            worksheet_programacoes.insert_row(['id', 'username', 'cliente', 'cliente_outros', 'data', 'produto', 'toneladas', 'quant_caminhoes', 'placas', 'transportador', 'usina', 'status', 'data_solicitacao', 'observacoes'], 1)
         
         return spreadsheet, worksheet_usuarios, worksheet_programacoes
     except Exception as e:
-        st.error(f"Erro ao conectar ao Google Sheets: {e}")
+        st.error(f"Erro ao conectar: {e}")
         return None, None, None
 
 def carregar_usuarios():
-    """Carrega usuários do Google Sheets"""
     try:
         _, worksheet, _ = conectar_google_sheets()
         if worksheet:
             dados = worksheet.get_all_records()
-            if dados and len(dados) > 0:
-                df = pd.DataFrame(dados)
-                colunas_necessarias = ['username', 'password_hash', 'nome', 'email', 'telefone', 'cargo', 'tipo', 'data_cadastro']
-                for col in colunas_necessarias:
-                    if col not in df.columns:
-                        df[col] = ''
-                
-                usuarios_existentes = df['username'].tolist() if 'username' in df.columns else []
-                
-                if 'uberaba' not in usuarios_existentes:
-                    uberaba_hash = hashlib.sha256("uberaba123".encode()).hexdigest()
-                    nova_linha = ['uberaba', uberaba_hash, 'Administrador Uberaba', 'uberaba@jasfalto.com', '', 'Administrador Usina Uberaba', 'admin_usina', datetime.now().isoformat()]
-                    worksheet.append_row(nova_linha)
-                
-                if 'araguari' not in usuarios_existentes:
-                    araguari_hash = hashlib.sha256("araguari123".encode()).hexdigest()
-                    nova_linha = ['araguari', araguari_hash, 'Administrador Araguari', 'araguari@jasfalto.com', '', 'Administrador Usina Araguari', 'admin_usina', datetime.now().isoformat()]
-                    worksheet.append_row(nova_linha)
-                
-                dados = worksheet.get_all_records()
-                df = pd.DataFrame(dados)
-                return df
-            else:
-                df = pd.DataFrame(columns=['username', 'password_hash', 'nome', 'email', 'telefone', 'cargo', 'tipo', 'data_cadastro'])
-                
-                admin_hash = hashlib.sha256("admin123".encode()).hexdigest()
-                admin_row = ['admin', admin_hash, 'Administrador Master', 'admin@jasfalto.com', '', 'Master', 'admin', datetime.now().isoformat()]
-                worksheet.append_row(admin_row)
-                
-                uberaba_hash = hashlib.sha256("uberaba123".encode()).hexdigest()
-                uberaba_row = ['uberaba', uberaba_hash, 'Administrador Uberaba', 'uberaba@jasfalto.com', '', 'Administrador Usina Uberaba', 'admin_usina', datetime.now().isoformat()]
-                worksheet.append_row(uberaba_row)
-                
-                araguari_hash = hashlib.sha256("araguari123".encode()).hexdigest()
-                araguari_row = ['araguari', araguari_hash, 'Administrador Araguari', 'araguari@jasfalto.com', '', 'Administrador Usina Araguari', 'admin_usina', datetime.now().isoformat()]
-                worksheet.append_row(araguari_row)
-                
-                return df
+            if dados:
+                return pd.DataFrame(dados)
         return pd.DataFrame(columns=['username', 'password_hash', 'nome', 'email', 'telefone', 'cargo', 'tipo', 'data_cadastro'])
-    except Exception as e:
-        st.error(f"Erro ao carregar usuários: {e}")
+    except:
         return pd.DataFrame()
 
 def salvar_usuario(username, password_hash, nome, email, telefone, cargo, tipo):
-    """Salva novo usuário no Google Sheets"""
     try:
-        spreadsheet, worksheet, _ = conectar_google_sheets()
+        _, worksheet, _ = conectar_google_sheets()
         if worksheet:
-            dados = worksheet.get_all_records()
-            for row in dados:
-                if row.get('username') == username:
-                    return False
-            
-            nova_linha = [username, password_hash, nome, email, telefone, cargo, tipo, datetime.now().isoformat()]
-            worksheet.append_row(nova_linha)
+            worksheet.append_row([username, password_hash, nome, email, telefone, cargo, tipo, datetime.now().isoformat()])
             return True
-    except Exception as e:
-        st.error(f"Erro ao salvar usuário: {e}")
+    except:
         return False
     return False
 
 def carregar_programacoes():
-    """Carrega programações do Google Sheets"""
     try:
         _, _, worksheet = conectar_google_sheets()
         if worksheet:
@@ -450,47 +241,28 @@ def carregar_programacoes():
                 df = pd.DataFrame(dados)
                 if 'data' in df.columns:
                     df['data'] = pd.to_datetime(df['data']).dt.date
-                if 'data_solicitacao' in df.columns:
-                    df['data_solicitacao'] = pd.to_datetime(df['data_solicitacao'])
                 return df
-        return pd.DataFrame(columns=[
-            'id', 'username', 'cliente', 'cliente_outros', 'data', 'produto', 'toneladas', 
-            'quant_caminhoes', 'placas', 'transportador', 'usina', 'status', 'data_solicitacao', 'observacoes'
-        ])
-    except Exception as e:
-        st.error(f"Erro ao carregar programações: {e}")
+        return pd.DataFrame()
+    except:
         return pd.DataFrame()
 
 def salvar_programacao(programacao):
-    """Salva nova programação no Google Sheets"""
     try:
         _, _, worksheet = conectar_google_sheets()
         if worksheet:
-            nova_linha = [
-                programacao['id'],
-                programacao['username'],
-                programacao['cliente'],
-                programacao['cliente_outros'],
-                programacao['data'].isoformat(),
-                programacao['produto'],
-                programacao['toneladas'],
-                programacao['quant_caminhoes'],
-                programacao['placas'],
-                programacao['transportador'],
-                programacao['usina'],
-                programacao['status'],
-                programacao['data_solicitacao'].isoformat(),
+            worksheet.append_row([
+                programacao['id'], programacao['username'], programacao['cliente'], programacao['cliente_outros'],
+                programacao['data'].isoformat(), programacao['produto'], programacao['toneladas'],
+                programacao['quant_caminhoes'], programacao['placas'], programacao['transportador'],
+                programacao['usina'], programacao['status'], programacao['data_solicitacao'].isoformat(),
                 programacao['observacoes']
-            ]
-            worksheet.append_row(nova_linha)
+            ])
             return True
-    except Exception as e:
-        st.error(f"Erro ao salvar programação: {e}")
+    except:
         return False
     return False
 
 def atualizar_status_programacao(id_programacao, novo_status):
-    """Atualiza o status de uma programação"""
     try:
         _, _, worksheet = conectar_google_sheets()
         if worksheet:
@@ -500,180 +272,93 @@ def atualizar_status_programacao(id_programacao, novo_status):
                     coluna_status = list(row.keys()).index('status') + 1
                     worksheet.update_cell(idx, coluna_status, novo_status)
                     return True
-        return False
-    except Exception as e:
-        st.error(f"Erro ao atualizar status: {e}")
-        return False
+    except:
+        pass
+    return False
 
-def atualizar_programacao(id_programacao, cliente, cliente_outros, data, produto, toneladas, 
-                         quant_caminhoes, placas, transportador, usina, observacoes):
-    """Atualiza uma programação existente"""
-    try:
-        _, _, worksheet = conectar_google_sheets()
-        if worksheet:
-            dados = worksheet.get_all_records()
-            
-            for idx, row in enumerate(dados, start=2):
-                if str(row.get('id', '')) == str(id_programacao):
-                    colunas = list(row.keys())
-                    
-                    worksheet.update_cell(idx, colunas.index('cliente') + 1, cliente if cliente != "OUTROS" else cliente_outros)
-                    worksheet.update_cell(idx, colunas.index('cliente_outros') + 1, cliente_outros if cliente == "OUTROS" else "")
-                    worksheet.update_cell(idx, colunas.index('data') + 1, data.isoformat())
-                    worksheet.update_cell(idx, colunas.index('produto') + 1, produto)
-                    worksheet.update_cell(idx, colunas.index('toneladas') + 1, toneladas)
-                    worksheet.update_cell(idx, colunas.index('quant_caminhoes') + 1, quant_caminhoes)
-                    worksheet.update_cell(idx, colunas.index('placas') + 1, placas)
-                    worksheet.update_cell(idx, colunas.index('transportador') + 1, transportador)
-                    worksheet.update_cell(idx, colunas.index('usina') + 1, usina)
-                    worksheet.update_cell(idx, colunas.index('observacoes') + 1, observacoes)
-                    
-                    return True
-        return False
-    except Exception as e:
-        st.error(f"Erro ao atualizar programação: {e}")
-        return False
-
-def cancelar_programacao(id_programacao):
-    """Cancela uma programação (altera status para Cancelada)"""
-    return atualizar_status_programacao(id_programacao, "Cancelada")
-
-def adicionar_programacao(username, cliente, cliente_outros, data, produto, toneladas, 
-                         quant_caminhoes, placas, transportador, usina, observacoes):
-    """Adiciona nova programação"""
+def adicionar_programacao(username, cliente, cliente_outros, data, produto, toneladas, quant_caminhoes, placas, transportador, usina, observacoes):
     df = carregar_programacoes()
-    
     novo_id = len(df) + 1 if not df.empty else 1
-    
-    nome_cliente = cliente
-    if cliente == "OUTROS" and cliente_outros:
-        nome_cliente = cliente_outros
+    nome_cliente = cliente_outros if cliente == "OUTROS" and cliente_outros else cliente
     
     programacao = {
-        'id': novo_id,
-        'username': username,
-        'cliente': nome_cliente,
-        'cliente_outros': cliente_outros if cliente == "OUTROS" else "",
-        'data': data,
-        'produto': produto,
-        'toneladas': toneladas,
-        'quant_caminhoes': quant_caminhoes,
-        'placas': placas,
-        'transportador': transportador,
-        'usina': usina,
-        'status': 'Pendente',
-        'data_solicitacao': datetime.now(),
-        'observacoes': observacoes
+        'id': novo_id, 'username': username, 'cliente': nome_cliente, 'cliente_outros': cliente_outros if cliente == "OUTROS" else "",
+        'data': data, 'produto': produto, 'toneladas': toneladas, 'quant_caminhoes': quant_caminhoes,
+        'placas': placas, 'transportador': transportador, 'usina': usina, 'status': 'Pendente',
+        'data_solicitacao': datetime.now(), 'observacoes': observacoes
     }
-    
-    if salvar_programacao(programacao):
-        return novo_id
-    return None
+    return novo_id if salvar_programacao(programacao) else None
 
 def autenticar_usuario(username, password):
-    """Verifica credenciais do usuário"""
     df_usuarios = carregar_usuarios()
-    
     if df_usuarios.empty:
-        return None
+        admin_hash = hashlib.sha256("admin123".encode()).hexdigest()
+        salvar_usuario('admin', admin_hash, 'Administrador Master', 'admin@jasfalto.com', '', 'Master', 'admin')
+        uberaba_hash = hashlib.sha256("uberaba123".encode()).hexdigest()
+        salvar_usuario('uberaba', uberaba_hash, 'Administrador Uberaba', 'uberaba@jasfalto.com', '', 'Administrador Usina Uberaba', 'admin_usina')
+        araguari_hash = hashlib.sha256("araguari123".encode()).hexdigest()
+        salvar_usuario('araguari', araguari_hash, 'Administrador Araguari', 'araguari@jasfalto.com', '', 'Administrador Usina Araguari', 'admin_usina')
+        df_usuarios = carregar_usuarios()
     
     password_hash = hashlib.sha256(password.encode()).hexdigest()
-    
-    if 'username' not in df_usuarios.columns:
-        st.error("Erro na estrutura da planilha. Contate o administrador.")
-        return None
-    
     usuario = df_usuarios[df_usuarios['username'] == username]
     if not usuario.empty and usuario.iloc[0]['password_hash'] == password_hash:
-        tipo_usuario = usuario.iloc[0]['tipo'] if 'tipo' in usuario.columns else 'cliente'
-        
-        if username == 'uberaba' or username == 'araguari':
-            tipo_usuario = 'admin_usina'
-        
-        return {
-            'username': username,
-            'nome': usuario.iloc[0]['nome'],
-            'cargo': usuario.iloc[0]['cargo'] if 'cargo' in usuario.columns else '',
-            'tipo': tipo_usuario
-        }
+        return {'username': username, 'nome': usuario.iloc[0]['nome'], 'cargo': usuario.iloc[0].get('cargo', ''), 'tipo': usuario.iloc[0].get('tipo', 'cliente')}
     return None
 
 def cadastrar_novo_usuario(username, password, nome, email, telefone, cargo, tipo='cliente'):
-    """Cadastra novo usuário"""
     df_usuarios = carregar_usuarios()
-    
-    if 'username' not in df_usuarios.columns:
-        st.error("Erro na estrutura da planilha. Contate o administrador.")
-        return False
-    
     if username in df_usuarios['username'].values:
         return False
-    
     password_hash = hashlib.sha256(password.encode()).hexdigest()
-    
-    if salvar_usuario(username, password_hash, nome, email, telefone, cargo, tipo):
-        return True
-    return False
+    return salvar_usuario(username, password_hash, nome, email, telefone, cargo, tipo)
 
 def resetar_senha_usuario(username, nova_senha):
-    """Reseta a senha de um usuário"""
     try:
-        spreadsheet, worksheet, _ = conectar_google_sheets()
+        _, worksheet, _ = conectar_google_sheets()
         if worksheet:
             dados = worksheet.get_all_records()
-            
             for idx, row in enumerate(dados, start=2):
                 if row.get('username') == username:
                     nova_senha_hash = hashlib.sha256(nova_senha.encode()).hexdigest()
-                    colunas = list(row.keys())
-                    coluna_senha = colunas.index('password_hash') + 1
+                    coluna_senha = list(row.keys()).index('password_hash') + 1
                     worksheet.update_cell(idx, coluna_senha, nova_senha_hash)
                     return True
-        return False
-    except Exception as e:
-        st.error(f"Erro ao resetar senha: {e}")
-        return False
+    except:
+        pass
+    return False
 
 # ==================== INTERFACE DO CLIENTE ====================
 
 def pagina_cliente(usuario):
-    """Página para clientes fazerem programações"""
-    
     st.title(f"🏭 Bem-vindo, {usuario['nome']}!")
-    if usuario.get('cargo'):
-        st.caption(f"Cargo: {usuario['cargo']}")
     
-    # Aviso de horário limite
-    agora_brasilia = obter_horario_brasilia()
     hoje = obter_data_hoje_brasilia()
+    agora = obter_horario_brasilia()
     
-    st.info(f"⏰ **Horário limite para programação:** Para amanhã ({ (hoje + timedelta(days=1)).strftime('%d/%m/%Y') }) o prazo é até às 16h de hoje. Para datas posteriores, não há limite de horário. Atualmente são {agora_brasilia.strftime('%H:%M')} (horário de Brasília)")
+    st.info(f"⏰ Horário atual: {agora.strftime('%H:%M:%S')} (Brasília) | Prazo para amanhã: até 16h")
     
-    # Abas para Nova Programação e Minhas Programações
     aba1, aba2 = st.tabs(["📝 Nova Programação", "📋 Minhas Programações"])
     
     with aba1:
-        st.markdown("### 📝 Faça sua Programação Diária")
-        st.markdown("⚠️ **Campos com * são obrigatórios**")
-        st.markdown("---")
+        st.markdown("### Nova Programação")
+        
+        # Data mínima é amanhã (nunca pode hoje)
+        data_minima = hoje + timedelta(days=1)
+        data_selecionada = st.date_input("Data da Usinagem", value=data_minima, min_value=data_minima)
+        
+        # Validar a data selecionada
+        valido, mensagem = validar_data_programacao(data_selecionada)
+        
+        if not valido:
+            st.error(f"❌ {mensagem}")
+        else:
+            st.success(f"✅ {mensagem}")
         
         with st.form("form_programacao"):
             col1, col2 = st.columns(2)
             
             with col1:
-                data_programacao = st.date_input(
-                    "Data da Usinagem *",
-                    min_value=hoje + timedelta(days=1),
-                    value=hoje + timedelta(days=1)
-                )
-                
-                # Verificar prazo
-                prazo_valido, mensagem_prazo = verificar_prazo_programacao(data_programacao)
-                if not prazo_valido:
-                    st.error(f"❌ {mensagem_prazo}")
-                else:
-                    st.success(f"✅ {mensagem_prazo}")
-                
                 opcoes_clientes = [
                     "CONCEBRA - CONCESSIONARIA DAS RODOVIAS CENTRAIS DO BRASIL S.A.",
                     "WAY 262 - CONCESSIONARIA DA RODOVIA BR 262 MG S.A.",
@@ -683,597 +368,77 @@ def pagina_cliente(usuario):
                     "PAVIÁGIL CONSTRUÇÕES E COMÉRCIO LTDA",
                     "OUTROS"
                 ]
+                cliente_selecionado = st.selectbox("Cliente", opcoes_clientes)
+                cliente_outros = st.text_input("Nome do cliente") if cliente_selecionado == "OUTROS" else ""
                 
-                cliente_selecionado = st.selectbox(
-                    "Cliente (responsável pelo pagamento) *",
-                    opcoes_clientes
-                )
-                
-                cliente_outros = ""
-                if cliente_selecionado == "OUTROS":
-                    cliente_outros = st.text_input("Digite o nome do cliente *")
-                
-                produto = st.selectbox(
-                    "Produto *",
-                    ["Faixa B", "Faixa C", "Faixa D", "Faixa D Aditivado", "Faixa D Aditivado (saco 25kg)", "EGL 16-19", "Gap-Graded", "PMQ", "Emulsão RR-1C", "CM-IMP", "Rejeito de Asfalto"]
-                )
-                
-                toneladas = st.number_input(
-                    "Quantidade (Toneladas) *",
-                    min_value=1.0,
-                    max_value=5000.0,
-                    step=10.0,
-                    format="%.1f",
-                    value=1.0
-                )
+                produto = st.selectbox("Produto", ["Faixa B", "Faixa C", "Faixa D", "Faixa D Aditivado", "Faixa D Aditivado (saco 25kg)", "EGL 16-19", "Gap-Graded", "PMQ", "Emulsão RR-1C", "CM-IMP", "Rejeito de Asfalto"])
+                toneladas = st.number_input("Toneladas", min_value=1.0, step=10.0, value=20.0)
             
             with col2:
-                quant_caminhoes = st.number_input(
-                    "Quantidade de Caminhões *",
-                    min_value=1,
-                    max_value=50,
-                    step=1,
-                    value=1
-                )
-                
-                st.markdown("#### Placas dos Caminhões *")
+                quant_caminhoes = st.number_input("Quantidade de Caminhões", min_value=1, step=1, value=1)
                 placas = []
-                todas_placas_preenchidas = True
                 for i in range(quant_caminhoes):
-                    placa = st.text_input(
-                        f"Caminhão {i+1} (formato: XXX-XXXX)",
-                        key=f"placa_{i}",
-                        placeholder="Ex: ABC-1234"
-                    )
+                    placa = st.text_input(f"Placa Caminhão {i+1}", placeholder="ABC-1234", key=f"placa_{i}")
                     placas.append(placa)
-                    if not placa:
-                        todas_placas_preenchidas = False
-                
                 placas_str = ", ".join([p for p in placas if p])
                 
-                transportador = st.text_input(
-                    "Transportador (responsável pelo transporte) *",
-                    placeholder="Digite o nome da transportadora"
-                )
-                
-                usina = st.selectbox(
-                    "Usina - Localidade *",
-                    ["Jasfalto - Uberaba/MG", "Jasfalto - Araguari/MG"]
-                )
-                
-                observacoes = st.text_area("Observações (opcional)", height=100)
+                transportador = st.text_input("Transportador")
+                usina = st.selectbox("Usina", ["Jasfalto - Uberaba/MG", "Jasfalto - Araguari/MG"])
+                observacoes = st.text_area("Observações", height=80)
             
-            submitted = st.form_submit_button("📊 Enviar Programação", use_container_width=True, disabled=not prazo_valido)
+            enviar = st.form_submit_button("Enviar Programação", disabled=not valido)
             
-            if submitted and prazo_valido:
-                erros = []
-                
-                if cliente_selecionado == "OUTROS" and not cliente_outros:
-                    erros.append("❌ Digite o nome do cliente")
-                
-                if not transportador:
-                    erros.append("❌ Informe o transportador responsável")
-                
-                if quant_caminhoes > 0 and not todas_placas_preenchidas:
-                    erros.append("❌ Preencha a placa de todos os caminhões")
-                
-                if toneladas <= 0:
-                    erros.append("❌ Informe a quantidade de toneladas")
-                
-                if erros:
-                    st.error("⚠️ **Não foi possível enviar a programação. Preencha todos os campos obrigatórios:**")
-                    for erro in erros:
-                        st.write(erro)
+            if enviar and valido:
+                prog_id = adicionar_programacao(
+                    usuario['username'], cliente_selecionado, cliente_outros, data_selecionada,
+                    produto, toneladas, quant_caminhoes, placas_str, transportador, usina, observacoes
+                )
+                if prog_id:
+                    st.success(f"✅ Programação #{prog_id} enviada!")
+                    st.balloons()
                 else:
-                    prog_id = adicionar_programacao(
-                        usuario['username'],
-                        cliente_selecionado,
-                        cliente_outros,
-                        data_programacao,
-                        produto,
-                        toneladas,
-                        quant_caminhoes,
-                        placas_str,
-                        transportador,
-                        usina,
-                        observacoes
-                    )
-                    if prog_id:
-                        st.success(f"✅ Programação #{prog_id} enviada com sucesso!")
-                        st.balloons()
-                    else:
-                        st.error("Erro ao salvar programação. Tente novamente.")
+                    st.error("Erro ao salvar")
     
     with aba2:
-        st.markdown("### 📋 Minhas Programações")
-        st.markdown("Aqui você pode visualizar, editar ou cancelar suas programações.")
-        
-        df_prog = carregar_programacoes()
-        if not df_prog.empty and 'username' in df_prog.columns:
-            minhas_progs = df_prog[df_prog['username'] == usuario['username']].sort_values('data', ascending=True)
-            
-            if not minhas_progs.empty:
-                programacoes_ativas = minhas_progs[minhas_progs['status'].isin(['Pendente', 'Confirmada'])]
-                
-                if not programacoes_ativas.empty:
-                    for idx, row in programacoes_ativas.iterrows():
-                        pode_editar, msg_edicao = pode_editar_programacao(row['data'])
-                        
-                        with st.expander(f"📦 Programação #{row['id']} - {row['data']} - {row['produto']} - Status: {row['status']}"):
-                            col_a, col_b, col_c = st.columns([2, 1, 1])
-                            
-                            with col_a:
-                                st.write(f"**Cliente:** {row['cliente']}")
-                                st.write(f"**Produto:** {row['produto']}")
-                                st.write(f"**Toneladas:** {row['toneladas']} t")
-                                st.write(f"**Quantidade de Caminhões:** {row['quant_caminhoes']}")
-                                st.write(f"**Placas:** {row['placas']}")
-                                st.write(f"**Transportador:** {row['transportador']}")
-                                st.write(f"**Usina:** {row['usina']}")
-                                st.write(f"**Observações:** {row['observacoes'] if pd.notna(row['observacoes']) else 'Nenhuma'}")
-                            
-                            with col_b:
-                                if pode_editar:
-                                    if st.button(f"✏️ Editar", key=f"edit_{row['id']}"):
-                                        st.session_state['editando_id'] = row['id']
-                                        st.session_state['editando_dados'] = row.to_dict()
-                                        st.rerun()
-                                else:
-                                    st.caption(f"⏰ {msg_edicao}")
-                            
-                            with col_c:
-                                if pode_editar and row['status'] != 'Cancelada':
-                                    if st.button(f"❌ Cancelar", key=f"cancel_{row['id']}"):
-                                        if cancelar_programacao(row['id']):
-                                            st.success(f"Programação #{row['id']} cancelada com sucesso!")
-                                            st.rerun()
-                                        else:
-                                            st.error("Erro ao cancelar programação.")
-                else:
-                    st.info("Você não possui programações ativas no momento.")
-                
-                programacoes_finalizadas = minhas_progs[minhas_progs['status'].isin(['Entregue', 'Cancelada'])]
-                if not programacoes_finalizadas.empty:
-                    st.markdown("---")
-                    st.markdown("#### 📜 Histórico de Programações Finalizadas")
-                    for idx, row in programacoes_finalizadas.iterrows():
-                        with st.expander(f"📦 Programação #{row['id']} - {row['data']} - {row['produto']} - Status: {row['status']}"):
-                            st.write(f"**Cliente:** {row['cliente']}")
-                            st.write(f"**Produto:** {row['produto']}")
-                            st.write(f"**Toneladas:** {row['toneladas']} t")
-                            st.write(f"**Quantidade de Caminhões:** {row['quant_caminhoes']}")
-                            st.write(f"**Placas:** {row['placas']}")
-                            st.write(f"**Transportador:** {row['transportador']}")
-                            st.write(f"**Usina:** {row['usina']}")
+        st.markdown("### Minhas Programações")
+        df = carregar_programacoes()
+        if not df.empty:
+            minhas = df[df['username'] == usuario['username']].sort_values('data', ascending=False)
+            if not minhas.empty:
+                st.dataframe(minhas[['id', 'data', 'produto', 'toneladas', 'usina', 'status']], use_container_width=True)
             else:
-                st.info("Você ainda não fez nenhuma programação.")
-        else:
-            st.info("Nenhuma programação encontrada.")
-        
-        # Formulário de edição
-        if 'editando_id' in st.session_state:
-            st.markdown("---")
-            st.markdown("### ✏️ Editar Programação")
-            st.warning("⚠️ Altere apenas os campos necessários.")
-            
-            dados_edit = st.session_state['editando_dados']
-            
-            with st.form("form_editar_programacao"):
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    nova_data = st.date_input(
-                        "Nova Data da Usinagem",
-                        value=dados_edit['data'],
-                        min_value=hoje + timedelta(days=1)
-                    )
-                    
-                    prazo_edit_valido, msg_prazo_edit = verificar_prazo_programacao(nova_data)
-                    if not prazo_edit_valido:
-                        st.error(f"❌ {msg_prazo_edit}")
-                    else:
-                        st.success(f"✅ {msg_prazo_edit}")
-                    
-                    novo_produto = st.selectbox(
-                        "Produto",
-                        ["Faixa B", "Faixa C", "Faixa D", "Faixa D Aditivado", "Faixa D Aditivado (saco 25kg)", "EGL 16-19", "Gap-Graded", "PMQ", "Emulsão RR-1C", "CM-IMP", "Rejeito de Asfalto"],
-                        index=["Faixa B", "Faixa C", "Faixa D", "Faixa D Aditivado", "Faixa D Aditivado (saco 25kg)", "EGL 16-19", "Gap-Graded", "PMQ", "Emulsão RR-1C", "CM-IMP", "Rejeito de Asfalto"].index(dados_edit['produto'])
-                    )
-                    
-                    novas_toneladas = st.number_input(
-                        "Quantidade (Toneladas)",
-                        min_value=1.0,
-                        max_value=5000.0,
-                        step=10.0,
-                        format="%.1f",
-                        value=float(dados_edit['toneladas'])
-                    )
-                
-                with col2:
-                    novo_quant_caminhoes = st.number_input(
-                        "Quantidade de Caminhões",
-                        min_value=1,
-                        max_value=50,
-                        step=1,
-                        value=int(dados_edit['quant_caminhoes'])
-                    )
-                    
-                    st.markdown("#### Placas dos Caminhões")
-                    novas_placas = []
-                    for i in range(novo_quant_caminhoes):
-                        placas_antigas = dados_edit['placas'].split(', ') if pd.notna(dados_edit['placas']) else []
-                        valor_antigo = placas_antigas[i] if i < len(placas_antigas) else ""
-                        placa = st.text_input(
-                            f"Caminhão {i+1} (formato: XXX-XXXX)",
-                            value=valor_antigo,
-                            key=f"edit_placa_{i}",
-                            placeholder="Ex: ABC-1234"
-                        )
-                        novas_placas.append(placa)
-                    
-                    novas_placas_str = ", ".join([p for p in novas_placas if p])
-                    
-                    novo_transportador = st.text_input(
-                        "Transportador",
-                        value=dados_edit['transportador'] if pd.notna(dados_edit['transportador']) else ""
-                    )
-                    
-                    nova_usina = st.selectbox(
-                        "Usina - Localidade",
-                        ["Jasfalto - Uberaba/MG", "Jasfalto - Araguari/MG"],
-                        index=0 if dados_edit['usina'] == "Jasfalto - Uberaba/MG" else 1
-                    )
-                    
-                    novas_observacoes = st.text_area(
-                        "Observações",
-                        value=dados_edit['observacoes'] if pd.notna(dados_edit['observacoes']) else "",
-                        height=100
-                    )
-                
-                col_btn1, col_btn2 = st.columns(2)
-                with col_btn1:
-                    salvar_edicao = st.form_submit_button("💾 Salvar Alterações", use_container_width=True, disabled=not prazo_edit_valido)
-                with col_btn2:
-                    cancelar_edicao = st.form_submit_button("❌ Cancelar Edição", use_container_width=True)
-                
-                if salvar_edicao and prazo_edit_valido:
-                    if atualizar_programacao(
-                        dados_edit['id'],
-                        dados_edit['cliente'],
-                        "",
-                        nova_data,
-                        novo_produto,
-                        novas_toneladas,
-                        novo_quant_caminhoes,
-                        novas_placas_str,
-                        novo_transportador,
-                        nova_usina,
-                        novas_observacoes
-                    ):
-                        st.success(f"✅ Programação #{dados_edit['id']} atualizada com sucesso!")
-                        del st.session_state['editando_id']
-                        del st.session_state['editando_dados']
-                        st.rerun()
-                    else:
-                        st.error("Erro ao atualizar programação.")
-                
-                if cancelar_edicao:
-                    del st.session_state['editando_id']
-                    del st.session_state['editando_dados']
-                    st.rerun()
+                st.info("Nenhuma programação")
 
-# ==================== INTERFACE DO ADMIN ====================
+# ==================== INTERFACE DO ADMIN (SIMPLIFICADA) ====================
 
 def pagina_admin(usuario):
-    """Página administrativa para gerenciar programações"""
-    
     st.title(f"⚙️ Painel Administrativo - {usuario['nome']}")
     
-    hoje = obter_data_hoje_brasilia()
+    df = carregar_programacoes()
     
     if usuario['tipo'] == 'admin_usina':
-        if usuario['username'] == 'uberaba':
-            usina_permitida = "Jasfalto - Uberaba/MG"
-            st.info(f"🔒 Você está visualizando apenas programações da usina: **{usina_permitida}**")
-        elif usuario['username'] == 'araguari':
-            usina_permitida = "Jasfalto - Araguari/MG"
-            st.info(f"🔒 Você está visualizando apenas programações da usina: **{usina_permitida}**")
-        else:
-            usina_permitida = None
+        usina_filtro = "Jasfalto - Uberaba/MG" if usuario['username'] == 'uberaba' else "Jasfalto - Araguari/MG"
+        df = df[df['usina'] == usina_filtro]
+        st.info(f"Visualizando apenas: {usina_filtro}")
+    
+    if not df.empty:
+        st.dataframe(df, use_container_width=True)
+        
+        # Editor de status
+        for idx, row in df.iterrows():
+            with st.expander(f"Programação #{row['id']} - {row['cliente']} - {row['data']}"):
+                novo_status = st.selectbox("Status", ['Pendente', 'Confirmada', 'Cancelada'], 
+                                          index=['Pendente', 'Confirmada', 'Cancelada'].index(row['status']),
+                                          key=f"status_{row['id']}")
+                if novo_status != row['status']:
+                    atualizar_status_programacao(row['id'], novo_status)
+                    st.rerun()
     else:
-        usina_permitida = None
-    
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 Dashboard", "📋 Programações", "👥 Clientes", "⚙️ Configurações"])
-    
-    with tab1:
-        st.markdown("### Dashboard de Programações")
-        
-        df_prog = carregar_programacoes()
-        
-        if not df_prog.empty:
-            if usina_permitida:
-                df_prog = df_prog[df_prog['usina'] == usina_permitida]
-            
-            st.markdown("#### Filtros")
-            col_f1, col_f2, col_f3, col_f4 = st.columns(4)
-            
-            with col_f1:
-                data_inicio = st.date_input("Data Início", value=hoje)
-            with col_f2:
-                data_fim = st.date_input("Data Fim", value=hoje)
-            with col_f3:
-                if usina_permitida:
-                    st.markdown(f"**Usina:** {usina_permitida}")
-                    usina_filtro = usina_permitida
-                else:
-                    usina_filtro = st.selectbox(
-                        "Usina",
-                        ["Todas", "Jasfalto - Uberaba/MG", "Jasfalto - Araguari/MG"]
-                    )
-            with col_f4:
-                status_filtro = st.multiselect(
-                    "Status",
-                    options=['Pendente', 'Confirmada', 'Cancelada'],
-                    default=['Pendente', 'Confirmada']
-                )
-            
-            df_filtrado = df_prog[(df_prog['data'] >= data_inicio) & (df_prog['data'] <= data_fim)]
-            
-            if not usina_permitida and usina_filtro != "Todas":
-                df_filtrado = df_filtrado[df_filtrado['usina'] == usina_filtro]
-            
-            if status_filtro:
-                df_filtrado = df_filtrado[df_filtrado['status'].isin(status_filtro)]
-            
-            if st.button("📄 Gerar Relatório PDF", use_container_width=True):
-                if not df_filtrado.empty:
-                    df_detalhado = expandir_por_caminhao(df_filtrado)
-                    
-                    if not df_detalhado.empty:
-                        df_pdf_detalhado = df_detalhado[['cliente', 'data', 'produto', 'placa', 'transportador', 'usina', 'status']].copy()
-                        df_pdf_detalhado.columns = ['Cliente', 'Data', 'Produto', 'Placa', 'Transportador', 'Usina', 'Status']
-                        
-                        resumo = df_filtrado.groupby('cliente').agg({
-                            'toneladas': 'sum',
-                            'quant_caminhoes': 'sum'
-                        }).reset_index()
-                        resumo.columns = ['Cliente', 'Total Toneladas', 'Total de Viagens']
-                        
-                        fig = gerar_grafico_toneladas_por_data_produto(df_filtrado)
-                        fig_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
-                        
-                        html = gerar_pdf_html(df_pdf_detalhado, resumo, fig_html, data_inicio.strftime('%d/%m/%Y'), data_fim.strftime('%d/%m/%Y'))
-                        
-                        st.download_button(
-                            label="📥 Baixar PDF",
-                            data=html.encode(),
-                            file_name=f"relatorio_programacoes_{data_inicio.strftime('%Y%m%d')}_{data_fim.strftime('%Y%m%d')}.html",
-                            mime="text/html",
-                            use_container_width=True
-                        )
-                    else:
-                        st.warning("Não foi possível gerar o relatório. Verifique os dados.")
-                else:
-                    st.warning("Nenhum dado encontrado no período selecionado.")
-            
-            st.markdown("---")
-            
-            st.markdown("#### Toneladas por Data e Produto")
-            
-            if not df_filtrado.empty:
-                fig = gerar_grafico_toneladas_por_data_produto(df_filtrado)
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Sem dados para exibir no gráfico")
-            
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                total_progs = len(df_filtrado)
-                st.metric("Total de Programações", total_progs)
-            
-            with col2:
-                total_ton = df_filtrado['toneladas'].sum()
-                st.metric("Toneladas Totais", f"{total_ton:,.0f} t")
-            
-            with col3:
-                pendentes = len(df_filtrado[df_filtrado['status'] == 'Pendente'])
-                st.metric("Pendentes", pendentes)
-            
-            with col4:
-                total_caminhoes = df_filtrado['quant_caminhoes'].sum()
-                st.metric("Total de Viagens", f"{total_caminhoes:,.0f}")
-            
-            st.markdown("#### Toneladas por Produto")
-            ton_por_produto = df_filtrado.groupby('produto')['toneladas'].sum().reset_index()
-            if not ton_por_produto.empty:
-                fig2 = px.pie(ton_por_produto, values='toneladas', names='produto', title="Distribuição por Produto")
-                st.plotly_chart(fig2, use_container_width=True)
-            
-            st.markdown("#### Dados Filtrados")
-            st.dataframe(df_filtrado[['id', 'cliente', 'data', 'produto', 'toneladas', 'quant_caminhoes', 'usina', 'status']], 
-                        use_container_width=True, hide_index=True)
-        else:
-            st.info("Nenhuma programação cadastrada ainda.")
-    
-    with tab2:
-        st.markdown("### Gerenciar Programações")
-        
-        df_prog = carregar_programacoes()
-        
-        if not df_prog.empty:
-            if usina_permitida:
-                df_prog = df_prog[df_prog['usina'] == usina_permitida]
-            
-            col_f1, col_f2 = st.columns(2)
-            with col_f1:
-                filtro_status = st.multiselect(
-                    "Filtrar por Status",
-                    options=['Pendente', 'Confirmada', 'Cancelada'],
-                    default=['Pendente', 'Confirmada']
-                )
-            with col_f2:
-                filtro_data = st.date_input("Filtrar por Data", value=None)
-            
-            df_filtrado = df_prog.copy()
-            if filtro_status:
-                df_filtrado = df_filtrado[df_filtrado['status'].isin(filtro_status)]
-            if filtro_data:
-                df_filtrado = df_filtrado[df_filtrado['data'] == filtro_data]
-            
-            st.markdown("#### Programações")
-            
-            for idx, row in df_filtrado.iterrows():
-                with st.expander(f"📦 Programação #{row['id']} - {row['cliente']} - {row['data']} - Usuário: {row['username']} - Status: {row['status']}"):
-                    col_a, col_b = st.columns([3, 1])
-                    with col_a:
-                        st.write(f"**Produto:** {row['produto']}")
-                        st.write(f"**Toneladas:** {row['toneladas']} t")
-                        st.write(f"**Quantidade Caminhões:** {row['quant_caminhoes']}")
-                        st.write(f"**Placas:** {row['placas'] if pd.notna(row['placas']) else 'Não informado'}")
-                        st.write(f"**Transportador:** {row['transportador'] if pd.notna(row['transportador']) else 'Não informado'}")
-                        st.write(f"**Usina:** {row['usina'] if pd.notna(row['usina']) else 'Não informado'}")
-                    with col_b:
-                        novo_status = st.selectbox(
-                            "Status",
-                            options=['Pendente', 'Confirmada', 'Cancelada'],
-                            index=['Pendente', 'Confirmada', 'Cancelada'].index(row['status']) if row['status'] in ['Pendente', 'Confirmada', 'Cancelada'] else 0,
-                            key=f"status_{row['id']}"
-                        )
-                        if novo_status != row['status']:
-                            if atualizar_status_programacao(row['id'], novo_status):
-                                st.rerun()
-        else:
-            st.info("Nenhuma programação cadastrada.")
-    
-    with tab3:
-        st.markdown("### Gerenciar Clientes")
-        
-        if usuario['tipo'] == 'admin':
-            df_usuarios = carregar_usuarios()
-            
-            if not df_usuarios.empty and 'tipo' in df_usuarios.columns:
-                clientes = df_usuarios[df_usuarios['tipo'] == 'cliente']
-                admins_usina = df_usuarios[df_usuarios['tipo'] == 'admin_usina']
-                
-                if not clientes.empty:
-                    st.markdown("#### 👥 Clientes")
-                    st.dataframe(
-                        clientes[['username', 'nome', 'email', 'telefone', 'cargo', 'data_cadastro']],
-                        use_container_width=True,
-                        hide_index=True
-                    )
-                
-                if not admins_usina.empty:
-                    st.markdown("#### 🔐 Administradores de Usina")
-                    st.dataframe(
-                        admins_usina[['username', 'nome', 'email', 'telefone', 'cargo', 'data_cadastro']],
-                        use_container_width=True,
-                        hide_index=True
-                    )
-                
-                st.markdown("---")
-                
-                st.markdown("### 🔑 Resetar Senha de Usuário")
-                st.warning("⚠️ Esta ação irá alterar a senha do usuário imediatamente.")
-                
-                col_r1, col_r2 = st.columns(2)
-                
-                with col_r1:
-                    usuarios_lista = df_usuarios[df_usuarios['username'] != 'admin']['username'].tolist()
-                    
-                    if usuarios_lista:
-                        usuario_reset = st.selectbox(
-                            "Selecione o usuário",
-                            options=usuarios_lista,
-                            key="select_usuario_reset"
-                        )
-                    else:
-                        st.info("Nenhum usuário cadastrado para resetar senha.")
-                        usuario_reset = None
-                
-                with col_r2:
-                    nova_senha = st.text_input(
-                        "Nova senha",
-                        type="password",
-                        placeholder="Digite a nova senha",
-                        key="nova_senha_reset"
-                    )
-                    confirmar_senha = st.text_input(
-                        "Confirmar nova senha",
-                        type="password",
-                        placeholder="Confirme a nova senha",
-                        key="confirmar_senha_reset"
-                    )
-                
-                if st.button("🔄 Resetar Senha", use_container_width=True, key="btn_reset_senha"):
-                    if usuario_reset and nova_senha:
-                        if nova_senha == confirmar_senha:
-                            if resetar_senha_usuario(usuario_reset, nova_senha):
-                                st.success(f"✅ Senha do usuário **{usuario_reset}** resetada com sucesso!")
-                                st.info(f"Nova senha: `{nova_senha}`")
-                                st.balloons()
-                                st.rerun()
-                            else:
-                                st.error("Erro ao resetar a senha. Tente novamente.")
-                        else:
-                            st.error("❌ As senhas não conferem!")
-                    else:
-                        st.error("❌ Selecione um usuário e digite a nova senha!")
-            
-            st.markdown("---")
-            
-            with st.expander("➕ Cadastrar Novo Cliente"):
-                with st.form("form_novo_cliente"):
-                    col_a, col_b = st.columns(2)
-                    with col_a:
-                        novo_username = st.text_input("Usuário (login) *")
-                        novo_nome = st.text_input("Nome Completo *")
-                        novo_email = st.text_input("E-mail *")
-                        novo_cargo = st.text_input("Função/Cargo *")
-                    with col_b:
-                        nova_senha_cliente = st.text_input("Senha *", type="password")
-                        novo_telefone = st.text_input("Telefone (WhatsApp)")
-                    
-                    cadastrar = st.form_submit_button("Cadastrar Cliente")
-                    
-                    if cadastrar:
-                        if all([novo_username, nova_senha_cliente, novo_nome, novo_email, novo_cargo]):
-                            if cadastrar_novo_usuario(novo_username, nova_senha_cliente, novo_nome, novo_email, novo_telefone, novo_cargo):
-                                st.success(f"Cliente {novo_nome} cadastrado com sucesso!")
-                                st.rerun()
-                            else:
-                                st.error("Usuário já existe!")
-                        else:
-                            st.error("Preencha todos os campos obrigatórios!")
-        else:
-            st.info("👑 Apenas o Administrador Master pode gerenciar clientes e resetar senhas.")
-    
-    with tab4:
-        st.markdown("### Configurações")
-        st.info("✅ Dados salvos permanentemente no Google Sheets. Não há risco de perda de dados.")
-        st.info("📋 As programações são salvas em tempo real e podem ser consultadas a qualquer momento.")
-        st.info("🏭 Usinas disponíveis: Jasfalto - Uberaba/MG e Jasfalto - Araguari/MG")
-        st.info("⏰ **Regras de programação:**")
-        st.info("   - ❌ Não é permitido programar para o dia atual")
-        st.info("   - ✅ Programação para amanhã: permitida apenas até às 16h de hoje")
-        st.info("   - ✅ Programação para depois de amanhã em diante: permitida em qualquer horário")
-        
-        if usuario['tipo'] == 'admin':
-            st.markdown("---")
-            st.markdown("### 🔐 Credenciais dos Administradores de Usina")
-            st.markdown("""
-            | Usuário | Senha | Usina |
-            |---------|-------|-------|
-            | `uberaba` | `uberaba123` | Jasfalto - Uberaba/MG |
-            | `araguari` | `araguari123` | Jasfalto - Araguari/MG |
-            """)
+        st.info("Nenhuma programação")
 
 # ==================== LOGIN E MAIN ====================
 
 def main():
-    """Função principal"""
-    
     logo = carregar_logo()
     
     if 'autenticado' not in st.session_state:
@@ -1281,133 +446,71 @@ def main():
     
     if not st.session_state.autenticado:
         if logo:
-            col_logo1, col_logo2, col_logo3 = st.columns([1, 1, 1])
-            with col_logo2:
+            col1, col2, col3 = st.columns([1, 1, 1])
+            with col2:
                 st.image(logo, width=200)
         
-        st.title("🏭 Sistema de Gestão de Usinagem - JASFALTO")
+        st.title("🏭 JASFALTO - Gestão de Usinagem")
         
-        st.markdown("---")
-        col_link1, col_link2, col_link3 = st.columns([1, 2, 1])
-        with col_link2:
-            st.markdown("""
-            <div style="text-align: center;">
-                <a href="https://jasfalto.com.br/" target="_blank" style="text-decoration: none;">
-                    <button style="
-                        background-color: #4CAF50; 
-                        color: white; 
-                        padding: 10px 20px; 
-                        border: none; 
-                        border-radius: 5px; 
-                        cursor: pointer;
-                        font-size: 16px;
-                        font-weight: bold;
-                    ">
-                        🌐 Visite nosso site: jasfalto.com.br
-                    </button>
-                </a>
-            </div>
-            """, unsafe_allow_html=True)
-        st.markdown("---")
+        # Link do site
+        st.markdown("""
+        <div style="text-align: center; margin: 20px 0;">
+            <a href="https://jasfalto.com.br/" target="_blank">
+                <button style="background-color: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 5px;">
+                    🌐 jasfalto.com.br
+                </button>
+            </a>
+        </div>
+        """, unsafe_allow_html=True)
         
-        st.markdown("### Acesso ao Sistema")
-        
-        tab_login, tab_cadastro = st.tabs(["🔐 Login", "📝 Cadastrar-se"])
+        tab_login, tab_cadastro = st.tabs(["Login", "Cadastrar"])
         
         with tab_login:
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col2:
-                with st.form("login"):
-                    username = st.text_input("Usuário")
-                    password = st.text_input("Senha", type="password")
-                    submitted = st.form_submit_button("Entrar", use_container_width=True)
-                    
-                    if submitted:
-                        usuario = autenticar_usuario(username, password)
-                        if usuario:
-                            st.session_state.autenticado = True
-                            st.session_state.usuario = usuario
-                            st.rerun()
-                        else:
-                            st.error("Usuário ou senha inválidos!")
-                
-                with st.expander("🔑 Esqueci minha senha"):
-                    st.markdown("""
-                    <div style="text-align: center; padding: 20px; background-color: #f8f9fa; border-radius: 10px;">
-                        <p style="font-size: 16px; margin-bottom: 10px;">
-                            📞 Entre em contato com o responsável da balança para redefinir sua senha:
-                        </p>
-                        <p style="font-size: 20px; font-weight: bold; color: #4CAF50;">
-                            (34) 3326-7300
-                        </p>
-                        <p style="font-size: 12px; color: #666; margin-top: 10px;">
-                            O responsável irá auxiliá-lo com a redefinição da sua senha.
-                        </p>
-                    </div>
-                    """, unsafe_allow_html=True)
+            with st.form("login"):
+                username = st.text_input("Usuário")
+                password = st.text_input("Senha", type="password")
+                if st.form_submit_button("Entrar"):
+                    usuario = autenticar_usuario(username, password)
+                    if usuario:
+                        st.session_state.autenticado = True
+                        st.session_state.usuario = usuario
+                        st.rerun()
+                    else:
+                        st.error("Usuário/senha inválidos")
+            
+            with st.expander("Esqueci minha senha"):
+                st.markdown("""
+                📞 Entre em contato com o responsável da balança:
+                ** (34) 3326-7300 **
+                """)
         
         with tab_cadastro:
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col2:
-                with st.form("cadastro"):
-                    st.markdown("### Criar nova conta")
-                    
-                    novo_username = st.text_input("Usuário (login) *")
-                    novo_nome = st.text_input("Nome completo *")
-                    novo_email = st.text_input("E-mail *")
-                    novo_telefone = st.text_input("Telefone (WhatsApp)")
-                    novo_cargo = st.text_input("Função/Cargo *")
-                    nova_senha = st.text_input("Senha *", type="password")
-                    confirma_senha = st.text_input("Confirmar senha *", type="password")
-                    
-                    cadastrar = st.form_submit_button("Cadastrar", use_container_width=True)
-                    
-                    if cadastrar:
-                        if not all([novo_username, novo_nome, novo_email, novo_cargo, nova_senha]):
-                            st.error("Preencha todos os campos obrigatórios!")
-                        elif nova_senha != confirma_senha:
-                            st.error("As senhas não conferem!")
+            with st.form("cadastro"):
+                novo_user = st.text_input("Usuário")
+                novo_nome = st.text_input("Nome")
+                novo_email = st.text_input("Email")
+                novo_telefone = st.text_input("Telefone")
+                novo_cargo = st.text_input("Cargo")
+                nova_senha = st.text_input("Senha", type="password")
+                confirma = st.text_input("Confirmar senha", type="password")
+                
+                if st.form_submit_button("Cadastrar"):
+                    if nova_senha == confirma:
+                        if cadastrar_novo_usuario(novo_user, nova_senha, novo_nome, novo_email, novo_telefone, novo_cargo):
+                            st.success("Cadastro realizado! Faça login.")
                         else:
-                            if cadastrar_novo_usuario(novo_username, nova_senha, novo_nome, novo_email, novo_telefone, novo_cargo):
-                                st.success("Cadastro realizado com sucesso! Faça login para continuar.")
-                                st.balloons()
-                            else:
-                                st.error("Usuário já existe! Escolha outro nome de usuário.")
+                            st.error("Usuário já existe")
+                    else:
+                        st.error("Senhas não conferem")
     
     else:
         with st.sidebar:
             if logo:
                 st.image(logo, width=150)
-                st.markdown("---")
-            
-            st.markdown(f"### 👤 {st.session_state.usuario['nome']}")
-            if st.session_state.usuario.get('cargo'):
-                st.markdown(f"*{st.session_state.usuario['cargo']}*")
-            st.markdown(f"*{st.session_state.usuario['tipo'].upper()}*")
-            st.markdown("---")
-            
-            st.markdown("""
-            <div style="text-align: center;">
-                <a href="https://jasfalto.com.br/" target="_blank" style="text-decoration: none;">
-                    <button style="
-                        background-color: #4CAF50; 
-                        color: white; 
-                        padding: 5px 10px; 
-                        border: none; 
-                        border-radius: 5px; 
-                        cursor: pointer;
-                        font-size: 12px;
-                    ">
-                        🌐 jasfalto.com.br
-                    </button>
-                </a>
-            </div>
-            """, unsafe_allow_html=True)
-            st.markdown("---")
-            
-            if st.button("🚪 Sair", use_container_width=True):
+            st.markdown(f"### {st.session_state.usuario['nome']}")
+            st.markdown(f"*{st.session_state.usuario['tipo']}*")
+            if st.button("Sair"):
                 st.session_state.autenticado = False
-                st.session_state.usuario = None
                 st.rerun()
         
         if st.session_state.usuario['tipo'] in ['admin', 'admin_usina']:
