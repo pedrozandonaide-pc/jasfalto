@@ -328,8 +328,6 @@ def resetar_senha_usuario(username, nova_senha):
         pass
     return False
 
-# ==================== INTERFACE DO CLIENTE ====================
-
 def pagina_cliente(usuario):
     st.title(f"🏭 Bem-vindo, {usuario['nome']}!")
     
@@ -375,10 +373,32 @@ def pagina_cliente(usuario):
                 toneladas = st.number_input("Toneladas", min_value=1.0, step=10.0, value=20.0)
             
             with col2:
-                quant_caminhoes = st.number_input("Quantidade de Caminhões", min_value=1, step=1, value=1)
+                # Usar session_state para manter o valor do número de caminhões
+                if 'quant_caminhoes' not in st.session_state:
+                    st.session_state.quant_caminhoes = 1
+                
+                quant_caminhoes = st.number_input(
+                    "Quantidade de Caminhões", 
+                    min_value=1, 
+                    max_value=50, 
+                    step=1, 
+                    value=st.session_state.quant_caminhoes,
+                    key="quant_caminhoes_input"
+                )
+                
+                # Atualizar session_state se o valor mudou
+                if quant_caminhoes != st.session_state.quant_caminhoes:
+                    st.session_state.quant_caminhoes = quant_caminhoes
+                    st.rerun()
+                
+                st.markdown("#### Placas dos Caminhões")
                 placas = []
                 for i in range(quant_caminhoes):
-                    placa = st.text_input(f"Placa Caminhão {i+1}", placeholder="ABC-1234", key=f"placa_{i}")
+                    placa = st.text_input(
+                        f"Placa do Caminhão {i+1}",
+                        placeholder="Ex: ABC-1234",
+                        key=f"placa_caminhao_{i}"
+                    )
                     placas.append(placa)
                 placas_str = ", ".join([p for p in placas if p])
                 
@@ -389,15 +409,26 @@ def pagina_cliente(usuario):
             enviar = st.form_submit_button("Enviar Programação", disabled=not valido)
             
             if enviar and valido:
-                prog_id = adicionar_programacao(
-                    usuario['username'], cliente_selecionado, cliente_outros, data_selecionada,
-                    produto, toneladas, quant_caminhoes, placas_str, transportador, usina, observacoes
-                )
-                if prog_id:
-                    st.success(f"✅ Programação #{prog_id} enviada!")
-                    st.balloons()
+                # Verificar se todas as placas foram preenchidas
+                if quant_caminhoes > 0 and not all(placas):
+                    st.error("❌ Preencha a placa de todos os caminhões!")
+                elif not transportador:
+                    st.error("❌ Informe o transportador responsável!")
+                elif cliente_selecionado == "OUTROS" and not cliente_outros:
+                    st.error("❌ Digite o nome do cliente!")
                 else:
-                    st.error("Erro ao salvar")
+                    prog_id = adicionar_programacao(
+                        usuario['username'], cliente_selecionado, cliente_outros, data_selecionada,
+                        produto, toneladas, quant_caminhoes, placas_str, transportador, usina, observacoes
+                    )
+                    if prog_id:
+                        st.success(f"✅ Programação #{prog_id} enviada com sucesso!")
+                        st.balloons()
+                        # Limpar o session_state para o próximo formulário
+                        st.session_state.quant_caminhoes = 1
+                        st.rerun()
+                    else:
+                        st.error("Erro ao salvar programação. Tente novamente.")
     
     with aba2:
         st.markdown("### Minhas Programações")
@@ -405,9 +436,14 @@ def pagina_cliente(usuario):
         if not df.empty:
             minhas = df[df['username'] == usuario['username']].sort_values('data', ascending=False)
             if not minhas.empty:
-                st.dataframe(minhas[['id', 'data', 'produto', 'toneladas', 'usina', 'status']], use_container_width=True)
+                # Exibir tabela com mais informações
+                display_cols = ['id', 'data', 'cliente', 'produto', 'toneladas', 'quant_caminhoes', 'placas', 'transportador', 'usina', 'status']
+                available_cols = [col for col in display_cols if col in minhas.columns]
+                st.dataframe(minhas[available_cols], use_container_width=True)
             else:
-                st.info("Nenhuma programação")
+                st.info("Você ainda não fez nenhuma programação.")
+        else:
+            st.info("Nenhuma programação encontrada.")
 
 # ==================== INTERFACE DO ADMIN (SIMPLIFICADA) ====================
 
