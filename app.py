@@ -40,7 +40,18 @@ def carregar_logo():
     except:
         return None
 
-# ==================== FUNÇÕES DE VALIDAÇÃO DE HORÁRIO ====================
+# ==================== FUNÇÕES DE VALIDAÇÃO DE HORÁRIO (CORRIGIDAS) ====================
+
+def obter_horario_brasilia():
+    """Retorna a data e hora atual no fuso horário de Brasília (GMT-3)"""
+    fuso_brasilia = pytz.timezone('America/Sao_Paulo')
+    agora_utc = datetime.now(pytz.UTC)
+    agora_brasilia = agora_utc.astimezone(fuso_brasilia)
+    return agora_brasilia
+
+def obter_data_hoje_brasilia():
+    """Retorna a data atual no fuso horário de Brasília"""
+    return obter_horario_brasilia().date()
 
 def verificar_prazo_programacao(data_programacao):
     """
@@ -48,10 +59,13 @@ def verificar_prazo_programacao(data_programacao):
     Regras:
     - Hoje (D): NUNCA permitido
     - Amanhã (D+1): Permitido apenas se ainda NÃO passou das 16h de hoje
-    - D+2, D+3, D+4... (qualquer data após amanhã): SEMPRE permitido (independente do horário)
+    - D+2, D+3, D+4...: SEMPRE permitido (independente do horário)
     """
     agora = obter_horario_brasilia()
     hoje = obter_data_hoje_brasilia()
+    
+    # DEBUG: Mostrar horário para diagnóstico
+    st.sidebar.caption(f"🕐 Horário Brasília: {agora.strftime('%d/%m/%Y %H:%M:%S')}")
     
     # Se a programação é para hoje -> NUNCA permitido
     if data_programacao == hoje:
@@ -59,13 +73,13 @@ def verificar_prazo_programacao(data_programacao):
     
     # Se a programação é para amanhã (D+1)
     if data_programacao == hoje + timedelta(days=1):
-        # Verifica se ainda não passou das 16h de hoje
+        # Verifica se ainda não passou das 16h de hoje (USANDO HORÁRIO BRASÍLIA)
         hora_atual = agora.hour
         if hora_atual >= 16:
             return False, f"❌ Prazo para programar para amanhã ({data_programacao.strftime('%d/%m/%Y')}) expirou. O limite era até às 16h de hoje. Atualmente são {agora.strftime('%H:%M')} (horário de Brasília)."
         else:
-            horas_restantes = 16 - hora_atual
-            minutos_restantes = 59 - agora.minute
+            horas_restantes = 16 - hora_atual - 1
+            minutos_restantes = 60 - agora.minute
             return True, f"✅ Você tem até às 16h de hoje para programar para amanhã ({data_programacao.strftime('%d/%m/%Y')}). Faltam {horas_restantes} hora(s) e {minutos_restantes} minuto(s)."
     
     # Para QUALQUER data futura além de amanhã (D+2, D+3, D+4, ...) -> SEMPRE permitido
@@ -98,9 +112,7 @@ def pode_editar_programacao(data_programacao):
         if agora.hour >= 16:
             return False, f"❌ Prazo para editar programação para amanhã ({data_programacao.strftime('%d/%m/%Y')}) expirou. O limite era até às 16h de hoje. Atualmente são {agora.strftime('%H:%M')} (horário de Brasília)."
         else:
-            horas_restantes = 16 - agora.hour
-            minutos_restantes = 59 - agora.minute
-            return True, f"✅ Você pode editar programação para amanhã até às 16h de hoje. Faltam {horas_restantes}h{minutos_restantes}min."
+            return True, f"✅ Você pode editar programação para amanhã até às 16h de hoje."
     
     # Programação para QUALQUER data futura (D+2, D+3, D+4, ...) -> Sempre pode editar
     if data_programacao > hoje + timedelta(days=1):
@@ -111,7 +123,7 @@ def pode_editar_programacao(data_programacao):
         return False, "❌ Não é possível editar programações de datas passadas."
     
     return False, "Prazo para edição expirado."
-
+    
 # ==================== FUNÇÃO PARA GERAR PDF COM GRÁFICO ====================
 def gerar_grafico_toneladas_por_data_produto(df):
     """Gera gráfico de barras empilhadas por data e produto com cores personalizadas e textos legíveis"""
