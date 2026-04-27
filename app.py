@@ -149,6 +149,189 @@ def gerar_grafico_toneladas_por_data_produto(df):
     )
     return fig
 
+# ==================== FUNÇÃO PARA GERAR PDF ====================
+
+def gerar_pdf_relatorio(df_filtrado, data_inicio, data_fim, titulo="Relatório de Programações"):
+    """Gera um relatório em PDF com resumo e detalhamento por caminhão"""
+    
+    if df_filtrado.empty:
+        return None
+    
+    # Expandir por caminhão para o detalhamento
+    registros_expandidos = []
+    for idx, row in df_filtrado.iterrows():
+        placas = row['placas'].split(', ') if pd.notna(row['placas']) and row['placas'] else []
+        if placas:
+            for placa in placas:
+                if placa.strip():
+                    novo_registro = {
+                        'Data': row['data'].strftime('%d/%m/%Y'),
+                        'Cliente': row['cliente'],
+                        'Produto': row['produto'],
+                        'Placa': placa.strip(),
+                        'Transportador': row['transportador'],
+                        'Usina': row['usina'],
+                        'Status': row['status']
+                    }
+                    registros_expandidos.append(novo_registro)
+        else:
+            novo_registro = {
+                'Data': row['data'].strftime('%d/%m/%Y'),
+                'Cliente': row['cliente'],
+                'Produto': row['produto'],
+                'Placa': 'Não informado',
+                'Transportador': row['transportador'],
+                'Usina': row['usina'],
+                'Status': row['status']
+            }
+            registros_expandidos.append(novo_registro)
+    
+    df_detalhado = pd.DataFrame(registros_expandidos)
+    
+    # Preparar resumo
+    resumo = {
+        'Período': f"{data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}",
+        'Total de Programações': len(df_filtrado),
+        'Total de Toneladas': f"{df_filtrado['toneladas'].sum():,.0f} t",
+        'Total de Viagens (Caminhões)': df_filtrado['quant_caminhoes'].sum(),
+        'Total de Clientes': df_filtrado['cliente'].nunique()
+    }
+    
+    # Separar por status
+    status_counts = df_filtrado['status'].value_counts().to_dict()
+    for status, count in status_counts.items():
+        resumo[f'Programações {status}'] = count
+    
+    df_resumo = pd.DataFrame([resumo])
+    
+    # Gerar gráfico
+    fig = gerar_grafico_toneladas_por_data_produto(df_filtrado)
+    fig_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
+    
+    # Gerar HTML do relatório
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>{titulo} - JASFALTO</title>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                margin: 40px;
+                color: #333;
+            }}
+            h1 {{
+                color: #2c3e50;
+                text-align: center;
+                border-bottom: 2px solid #4CAF50;
+                padding-bottom: 10px;
+            }}
+            h2 {{
+                color: #2c3e50;
+                margin-top: 30px;
+                border-left: 4px solid #4CAF50;
+                padding-left: 15px;
+            }}
+            .header {{
+                text-align: center;
+                margin-bottom: 30px;
+            }}
+            .periodo {{
+                text-align: center;
+                color: #666;
+                margin-bottom: 10px;
+            }}
+            .resumo {{
+                background-color: #f8f9fa;
+                padding: 15px;
+                border-radius: 8px;
+                margin-bottom: 30px;
+                border: 1px solid #dee2e6;
+            }}
+            .resumo h3 {{
+                margin-top: 0;
+                color: #2c3e50;
+            }}
+            .resumo table {{
+                width: 100%;
+                border-collapse: collapse;
+            }}
+            .resumo td {{
+                padding: 8px;
+                border: none;
+            }}
+            .grafico {{
+                margin: 30px 0;
+                text-align: center;
+                page-break-inside: avoid;
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 20px;
+                margin-bottom: 30px;
+                font-size: 12px;
+            }}
+            th {{
+                background-color: #4CAF50;
+                color: white;
+                padding: 10px;
+                text-align: left;
+                border: 1px solid #ddd;
+            }}
+            td {{
+                padding: 8px;
+                border: 1px solid #ddd;
+                text-align: left;
+            }}
+            tr:nth-child(even) {{
+                background-color: #f2f2f2;
+            }}
+            .footer {{
+                text-align: center;
+                margin-top: 30px;
+                font-size: 11px;
+                color: #666;
+                border-top: 1px solid #dee2e6;
+                padding-top: 15px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>JASFALTO - {titulo}</h1>
+        </div>
+        <div class="periodo">
+            <strong>Período:</strong> {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}
+        </div>
+        <div class="periodo">
+            <strong>Data de emissão:</strong> {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
+        </div>
+        
+        <div class="resumo">
+            <h3>📊 RESUMO GERAL</h3>
+            {df_resumo.to_html(index=False)}
+        </div>
+        
+        <div class="grafico">
+            <h3>📈 TONELADAS POR DATA E PRODUTO</h3>
+            {fig_html}
+        </div>
+        
+        <h2>📋 DETALHAMENTO POR CAMINHÃO</h2>
+        <p><strong>Total de viagens:</strong> {len(df_detalhado)}</p>
+        {df_detalhado.to_html(index=False)}
+        
+        <div class="footer">
+            <p>Relatório gerado automaticamente pelo Sistema de Gestão de Usinagem JASFALTO</p>
+        </div>
+    </body>
+    </html>
+    """
+    
+    return html
+
 # ==================== CONEXÃO COM GOOGLE SHEETS ====================
 
 def conectar_google_sheets():
@@ -642,6 +825,7 @@ def pagina_admin(usuario):
         st.markdown("### Dashboard de Programações")
         
         if not df_prog.empty:
+            # Filtros
             col_f1, col_f2, col_f3 = st.columns(3)
             with col_f1:
                 data_inicio = st.date_input("Data Início", value=obter_data_hoje_brasilia() - timedelta(days=7))
@@ -650,10 +834,31 @@ def pagina_admin(usuario):
             with col_f3:
                 status_filtro = st.multiselect("Status", ['Pendente', 'Confirmada', 'Cancelada'], default=['Pendente', 'Confirmada'])
             
+            # Aplicar filtros
             df_filtrado = df_prog[(df_prog['data'] >= data_inicio) & (df_prog['data'] <= data_fim)]
             if status_filtro:
                 df_filtrado = df_filtrado[df_filtrado['status'].isin(status_filtro)]
             
+            # Botão para gerar PDF
+            col_btn1, col_btn2 = st.columns([1, 4])
+            with col_btn1:
+                if st.button("📄 Gerar PDF", use_container_width=True):
+                    if not df_filtrado.empty:
+                        html = gerar_pdf_relatorio(df_filtrado, data_inicio, data_fim, "Relatório de Programações")
+                        if html:
+                            st.download_button(
+                                label="📥 Baixar Relatório",
+                                data=html.encode(),
+                                file_name=f"relatorio_programacoes_{data_inicio.strftime('%Y%m%d')}_{data_fim.strftime('%Y%m%d')}.html",
+                                mime="text/html",
+                                use_container_width=True
+                            )
+                    else:
+                        st.warning("Nenhum dado encontrado no período selecionado.")
+            
+            st.markdown("---")
+            
+            # Métricas
             col_m1, col_m2, col_m3, col_m4 = st.columns(4)
             with col_m1:
                 st.metric("Total Programações", len(df_filtrado))
@@ -665,6 +870,7 @@ def pagina_admin(usuario):
             with col_m4:
                 st.metric("Total Viagens", df_filtrado['quant_caminhoes'].sum())
             
+            # Gráfico
             if not df_filtrado.empty:
                 fig = gerar_grafico_toneladas_por_data_produto(df_filtrado)
                 st.plotly_chart(fig, use_container_width=True)
